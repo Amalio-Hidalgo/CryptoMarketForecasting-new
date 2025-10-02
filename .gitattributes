@@ -1,0 +1,30 @@
+# Git attributes for proper language detection and handling
+
+# Python files
+*.py linguist-language=Python
+
+# Jupyter notebooks - reduce weight in language stats
+*.ipynb linguist-documentation
+
+# Documentation
+*.md linguist-documentation
+*.rst linguist-documentation
+
+# Data files - exclude from language stats
+*.csv linguist-generated
+*.xlsx linguist-generated
+*.json linguist-generated
+!config.json
+
+# Model artifacts and outputs
+*.pkl linguist-generated
+*.model linguist-generated
+OutputData/* linguist-generated
+
+# Line ending normalization
+* text=auto
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf

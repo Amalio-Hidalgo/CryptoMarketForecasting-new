@@ -1,0 +1,15 @@
+include README.md
+include LICENSE
+include requirements.txt
+include config.json
+include .env.example
+recursive-include src *.py
+recursive-include notebooks *.ipynb
+recursive-include examples *.py
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store
+recursive-exclude * .git*
+prune OutputData/*
+prune data/raw/*
+prune data/processed/*
