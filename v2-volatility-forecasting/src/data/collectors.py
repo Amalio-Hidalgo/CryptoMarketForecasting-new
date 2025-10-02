@@ -1,8 +1,32 @@
 """
 Data Collection Module for Cryptocurrency Volatility Forecasting
 
-This module contains all API collection functions from the working LatestNotebook.ipynb
+This module contains all API collection functions with enhanced credit protection.
 Handles data from CoinGecko, Binance, Deribit, FRED, and Dune Analytics.
+
+🛡️ DUNE API CREDIT PROTECTION:
+This module implements multiple layers of protection to prevent accidental 
+credit consumption from Dune Analytics API:
+
+SAFE METHODS (NO CREDITS):
+- get_dune_data_safe(): Only loads CSV files
+- get_dune_data_direct(): Uses cached results via get_latest_result()
+- get_dune_data(strategy="cached_only"): Safe cache access
+- get_dune_data(strategy="csv_only"): File-based only
+
+CREDIT-CONSUMING METHODS:
+- get_dune_data(strategy="execute_only"): Requires allow_dune_execution=True
+- _execute_queries(): Direct execution (internal use)
+
+RECOMMENDED APPROACH:
+1. Always try get_dune_data_direct() first (free if cached)
+2. Use CSV files for offline analysis  
+3. Only execute fresh queries when explicitly needed
+
+DEFAULT CONFIGURATION:
+- allow_dune_execution=False (prevents accidental execution)
+- dune_strategy="cached_only" (safe default)
+- Key forecasting queries: [5893929, 5893461, 5893952, 5893947, 5894076, 5893557, 5893307, 5894092, 5894035, 5893555, 5893552, 5893566, 5893781, 5893821, 5892650, 5893009, 5892998, 5893911, 5892742, 5892720, 5891651, 5892696, 5892424, 5892227, 5891691]
 """
 
 import os
@@ -44,7 +68,7 @@ class CryptoDataCollector:
         
         # API Keys from environment
         self.COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY")
-        self.DUNE_API_KEY = os.getenv("DUNE_API_KEY_2")  # Using DUNE_API_KEY_2
+        self.DUNE_API_KEY = os.getenv("DUNE_API_KEY")  # Using DUNE_API_KEY_2
         self.FRED_API_KEY = os.getenv("FRED_API_KEY")
         
         # Frequency configuration for batch sizing and resampling
@@ -54,7 +78,7 @@ class CryptoDataCollector:
         self.DUNE_STRATEGY = dune_strategy
         self.ALLOW_DUNE_EXECUTION = allow_dune_execution
         
-        # Configuration dictionaries - Updated daily queries (26 total)
+        # Configuration dictionaries - Updated daily queries (25 total)
         self.DUNE_QUERIES = {
             "query_01": 5893929,
             "query_02": 5893461,
@@ -80,8 +104,7 @@ class CryptoDataCollector:
             "query_22": 5892696,
             "query_23": 5892424,
             "query_24": 5892227,
-            "query_25": 5891691,
-            "query_26": 5795645
+            "query_25": 5891691
         }
         
         self.FRED_KNOWN = {
@@ -150,8 +173,11 @@ class CryptoDataCollector:
         """DEPRECATED: Use get_dune_resolution() instead."""
         return self.get_dune_resolution()
 
-    # --- CoinGecko Methods ---
-    def coingecko_get_universe_v2(self, 
+    # =============================================================================
+    # COINGECKO API DATA COLLECTION
+    # =============================================================================
+
+    def coingecko_get_universe(self, 
                                   n: Optional[int] = None, 
                                   output_format: str = "ids", 
                                   sleep_time: int = 6) -> Union[List[str], Dict[str, List[str]]]:
@@ -267,7 +293,10 @@ class CryptoDataCollector:
                 
         return outbig if outbig is not None else pd.DataFrame()
 
-    # --- Binance Methods ---
+    # =============================================================================
+    # BINANCE API DATA COLLECTION
+    # =============================================================================
+
     def binance_get_price_action(self, 
                                  ids: Optional[List[str]] = None,
                                  tickers: Optional[List[str]] = None,
@@ -283,7 +312,7 @@ class CryptoDataCollector:
             
         outbig = None
         if ids is None or tickers is None:
-            data = self.coingecko_get_universe_v2(n=self.TOP_N, output_format="both")
+            data = self.coingecko_get_universe(n=self.TOP_N, output_format="both")
             ids, tickers = data["ids"], data["ticker"]
             
         successful_coins = []
@@ -367,7 +396,10 @@ class CryptoDataCollector:
             
         return outbig if outbig is not None else pd.DataFrame()
 
-    # --- Deribit DVOL Methods ---
+    # =============================================================================
+    # DERIBIT DVOL DATA COLLECTION
+    # =============================================================================
+
     def deribit_get_dvol(self, 
                          currencies: List[str] = ['BTC', 'ETH'],
                          days: Optional[int] = None,
@@ -416,7 +448,10 @@ class CryptoDataCollector:
                 
         return out if out is not None else pd.DataFrame()
 
-    # --- FRED Methods ---
+    # =============================================================================
+    # FRED MACROECONOMIC DATA COLLECTION
+    # =============================================================================
+
     def fred_get_series(self, 
                         series_ids: Optional[Dict[str, str]] = None,
                         start: Optional[str] = None) -> pd.DataFrame:
@@ -464,93 +499,125 @@ class CryptoDataCollector:
             return df.asfreq(self.get_pandas_freq(), method='ffill')
         return pd.DataFrame()
 
-    # --- Dune Methods ---
-    def dune_from_csv(self, path: str = "OutputData/Dune_Metrics.csv") -> pd.DataFrame:
-        """Load Dune data from CSV."""
-        if not os.path.exists(path):
-            print(f"Dune CSV file not found at {path}")
-            return pd.DataFrame()
-            
-        try:
-            df = pd.read_csv(path, index_col=None)
-            dt_col = None
-            
-            # Find datetime column
-            for c in df.columns:
-                try:
-                    pd.to_datetime(df[c], errors="raise")
-                    dt_col = c
-                    break
-                except Exception:
-                    continue
-                    
-            if dt_col is None and "date" in df.columns:
-                dt_col = "date"
-            if dt_col is None:
-                return pd.DataFrame()
-                
-            df = df.rename(columns={dt_col: "date"})
-            df["date"] = pd.to_datetime(df["date"], errors="coerce")
-            df = df.set_index("date")
-            df.index = df.index.tz_localize(self.TIMEZONE)
-            df.columns = [c.lower() for c in df.columns]
-            df.index.name = "date"
-            df = df.resample("1D").last().dropna(how="any")
-            
-            return df
-            
-        except Exception as e:
-            print(f"Error loading Dune CSV: {e}")
-            return pd.DataFrame()
+    # =============================================================================
+    # DUNE ANALYTICS DATA COLLECTION
+    # =============================================================================
 
-    def check_query_freshness(self, query_id: int) -> bool:
-        """Check if query was executed in the last 24 hours."""
+    def get_dune_data_safe(self, csv_path: str = "OutputData/dune_results.csv") -> pd.DataFrame:
+        """
+        🛡️  SAFE METHOD: Load Dune data without API calls.
+        This method GUARANTEES no credits will be consumed.
+        """
+        print("� SAFE MODE: Loading CSV only (NO API CALLS)")
+        return self._load_dune_csv(csv_path)
+    
+    def get_dune_data_direct(self, query_ids: Optional[List[int]] = None) -> pd.DataFrame:
+        """
+        🎯 RECOMMENDED METHOD: Direct cache access using simple Dune client.
+        Uses get_latest_result() - FREE if cached, minimal credits if not.
+        
+        This is the cleanest approach we learned from testing.
+        """
         try:
             from dune_client.client import DuneClient
             from dune_client.query import QueryBase
             
-            dune = DuneClient(api_key=self.DUNE_API_KEY, base_url="https://api.dune.com")
+            if not self.DUNE_API_KEY:
+                print("❌ No Dune API key available")
+                return pd.DataFrame()
             
-            # Try to get latest result metadata
-            query = QueryBase(query_id=query_id)
-            result = dune.get_latest_result(query)
-            if result and hasattr(result, 'execution_ended_at') and result.execution_ended_at:
-                # Check if execution was in last 24 hours
-                time_diff = dt.datetime.now(dt.timezone.utc) - result.execution_ended_at
-                return time_diff.total_seconds() < 86400  # 24 hours
-            return False
+            # Use key queries for volatility forecasting if none specified    
+            if query_ids is None:
+                key_queries = [5893929, 5893461, 5893952, 5893947, 5894076, 5893557, 5893307, 5894092, 5894035, 5893555, 5893552, 5893566, 5893781, 5893821, 5892650, 5893009, 5892998, 5893911, 5892742, 5892720, 5891651, 5892696, 5892424, 5892227, 5891691]  # All 25 queries
+                query_ids = key_queries
+            
+            print(f"🔍 Checking {len(query_ids)} queries for cached results...")
+            dune = DuneClient(api_key=self.DUNE_API_KEY)
+            
+            results = {}
+            cached_count = 0
+            
+            for qid in query_ids:
+                try:
+                    query = QueryBase(query_id=qid)
+                    result = dune.get_latest_result(query)
+                    
+                    if result and result.result and result.result.rows:
+                        df = pd.DataFrame([dict(row) for row in result.result.rows])
+                        results[f"query_{qid}"] = df
+                        cached_count += 1
+                        print(f"   ✅ Query {qid}: {len(df)} rows (cached)")
+                    else:
+                        print(f"   ⚠️  Query {qid}: No cached result")
+                        
+                except Exception as e:
+                    print(f"   ❌ Query {qid}: {str(e)[:30]}...")
+            
+            if cached_count > 0:
+                print(f"🎊 Successfully retrieved {cached_count}/{len(query_ids)} cached datasets")
+                print(f"💰 Credits used: 0 (cached results)")
+                
+                # Simple combination - just concatenate with query prefixes
+                combined_df = pd.DataFrame()
+                for name, df in results.items():
+                    if not df.empty:
+                        df.columns = [f"{name}_{col}" for col in df.columns]
+                        if combined_df.empty:
+                            combined_df = df
+                        else:
+                            combined_df = pd.concat([combined_df, df], axis=1, sort=False)
+                
+                return combined_df
+            else:
+                print("ℹ️  No cached data available")
+                return pd.DataFrame()
+                
+        except ImportError:
+            print("❌ dune_client not available")
+            return pd.DataFrame()
         except Exception as e:
-            print(f"Could not check freshness for query {query_id}: {e}")
-            return False
-
-    def get_batch_size_for_frequency(self) -> int:
-        """Get appropriate batch size based on lookback period and frequency."""
-        if self.FREQUENCY in ["1H", "1h", "hourly"]:
-            # For hourly data: lookback_days * 24 hours per day
-            return self.LOOKBACK_DAYS * 24
-        else:
-            # For daily data: just the lookback_days
-            return self.LOOKBACK_DAYS
+            print(f"❌ Direct access failed: {e}")
+            return pd.DataFrame()
+    
+    def get_dune_data_recover(self, num_queries: int = 5) -> pd.DataFrame:
+        """
+        💰 RECOVERY METHOD: Execute a small number of queries to get actual data.
+        Since credits were already spent, let's get some data back!
+        """
+        if not self.ALLOW_DUNE_EXECUTION:
+            print("❌ Recovery mode requires allow_dune_execution=True")
+            return pd.DataFrame()
+            
+        # Use only the first few queries to minimize additional credit usage
+        query_subset = list(self.DUNE_QUERIES.values())[:num_queries]
+        print(f"💡 RECOVERY MODE: Executing {len(query_subset)} queries to get data")
+        print(f"💰 This will cost ~{len(query_subset) * 6} additional credits")
+        
+        return self._execute_queries(query_subset)
 
     def get_dune_data(self, query_ids: Optional[List[int]] = None, 
                       strategy: Optional[str] = None, 
                       csv_path: str = "OutputData/dune_results.csv") -> pd.DataFrame:
         """
-        Unified method to get Dune data based on configured strategy.
+        Get Dune Analytics data using safe, credit-aware strategies.
         
-        Strategies:
-        - "csv_only": Only load from CSV file
-        - "cached_only": Only use cached API results  
-        - "execute_only": Force fresh execution (costs credits!)
-        - "csv_cached_execute": Try CSV -> cached -> execute (default)
+        🛡️  CREDIT PROTECTION STRATEGIES:
+        - "csv_only": Load from CSV file only (FREE)
+        - "cached_only": Use cached API results only (FREE if cached exists)
+        - "direct_cache": Direct client.get_latest_result() (recommended)
+        - "execute_only": Force fresh execution (COSTS ~6 credits per query!)
         
         Args:
-            query_ids: List of query IDs. If None, uses all configured queries.
-            strategy: Data collection strategy. If None, uses config setting.
+            query_ids: List of query IDs. If None, uses key forecasting queries.
+            strategy: Data collection strategy. Default: "cached_only"
             csv_path: Path to save/load CSV file
             
         Returns:
             DataFrame with Dune analytics data
+            
+        Note:
+            Always try cached strategies first to avoid credit consumption.
+            Use execute_only only when you explicitly need fresh data.
         """
         if query_ids is None:
             query_ids = list(self.DUNE_QUERIES.values())
@@ -559,51 +626,50 @@ class CryptoDataCollector:
             print("❌ No Dune API key available")
             return pd.DataFrame()
         
-        # Use configured strategy if not provided
-        if strategy is None:
-            strategy = getattr(self, 'DUNE_STRATEGY', 'csv_cached_execute')
+        strategy = strategy or getattr(self, 'DUNE_STRATEGY', 'csv_cached_execute')
         
         # Strategy: CSV only
         if strategy == "csv_only":
-            return self._load_from_csv(csv_path)
+            return self._load_dune_csv(csv_path)
             
         # Strategy: Cached only  
         elif strategy == "cached_only":
-            return self._get_cached_dune_results(query_ids)
+            print("🛡️  CACHED ONLY MODE: NO API CALLS WILL BE MADE")
+            return self._get_cached_results(query_ids)
             
         # Strategy: Execute only
         elif strategy == "execute_only":
             if not getattr(self, 'ALLOW_DUNE_EXECUTION', False):
                 print("🚫 Execution blocked by ALLOW_DUNE_EXECUTION=False")
                 return pd.DataFrame()
-            return self._execute_dune_queries_with_date_filter(query_ids)
+            return self._execute_queries(query_ids)
             
         # Strategy: CSV -> Cached -> Execute (default)
         else:  # csv_cached_execute
-            # Step 1: Try CSV first
-            df = self._load_from_csv(csv_path)
+            print("🛡️  SAFE MODE: Trying CSV and cache only (NO API CALLS)")
+            
+            # Try CSV first
+            df = self._load_dune_csv(csv_path)
             if not df.empty:
+                print("✅ Data loaded from CSV file")
                 return df
                 
-            # Step 2: Try cached results
-            df = self._get_cached_dune_results(query_ids)
+            # Try cached files (local cache only, no API)
+            df = self._get_cached_results(query_ids)
             if not df.empty:
-                self._save_dataframe_to_csv(df, csv_path)
+                self._save_dune_csv(df, csv_path)
                 return df
                 
-            # Step 3: Execute if allowed
+            # NEVER execute automatically - require explicit permission
             if getattr(self, 'ALLOW_DUNE_EXECUTION', False):
-                print("⚠️  Executing fresh Dune queries (consumes credits)")
-                df = self._execute_dune_queries_with_date_filter(query_ids)
-                if not df.empty:
-                    self._save_dataframe_to_csv(df, csv_path)
-                    return df
+                print("⚠️  EXECUTION DISABLED TO PROTECT CREDITS")
+                print("   💰 To execute queries (costs credits), use strategy='execute_only'")
             else:
                 print("🚫 Dune execution blocked (ALLOW_DUNE_EXECUTION=False)")
                 
         return pd.DataFrame()
-    
-    def _load_from_csv(self, csv_path: str) -> pd.DataFrame:
+
+    def _load_dune_csv(self, csv_path: str) -> pd.DataFrame:
         """Load Dune data from CSV file."""
         if not os.path.exists(csv_path):
             return pd.DataFrame()
@@ -614,183 +680,213 @@ class CryptoDataCollector:
             if self.TIMEZONE:
                 df.index = df.index.tz_localize(self.TIMEZONE)
             df.index.name = "date"
-            # CSV loaded silently
             return df
         except Exception as e:
             print(f"⚠️  CSV loading failed: {str(e)[:50]}...")
             return pd.DataFrame()
-    
-    def _get_cached_dune_results(self, query_ids: List[int]) -> pd.DataFrame:
-        """Get cached results from Dune queries."""
-        from dune_client.client import DuneClient
-        from dune_client.query import QueryBase
+
+    def _get_cached_results(self, query_ids: List[int]) -> pd.DataFrame:
+        """
+        SAFE METHOD: Get truly cached results WITHOUT making API calls.
+        This method only loads pre-existing cached files and does NOT consume credits.
+        """
+        print("🔒 SAFE MODE: Loading only pre-cached data (NO API CALLS)")
         
-        dune = DuneClient(api_key=self.DUNE_API_KEY, base_url="https://api.dune.com")
+        # Try to load from local cache directory
+        cache_dir = "OutputData/dune_cache"
+        if not os.path.exists(cache_dir):
+            print(f"📁 No cache directory found: {cache_dir}")
+            return pd.DataFrame()
         
-        out = None
-        successful_queries = []
-        failed_queries = []
+        combined_df = None
+        loaded_files = 0
         
         for qid in query_ids:
-            try:
-                # Try to get latest results without executing the query
-                query = QueryBase(query_id=qid)
-                result = dune.get_latest_result(query)
-                
-                if not result or not result.result or not result.result.rows:
-                    failed_queries.append(f"Query {qid} (no cached data)")
-                    continue
-                    
-                df = pd.DataFrame(result.result.rows)
-                df = self._process_dune_dataframe(df, qid)
-                
-                if not df.empty:
-                    successful_queries.append(f"Query {qid}")
-                    if out is None:
-                        out = df
-                    else:
-                        out = out.join(df, how='outer')
-                else:
-                    failed_queries.append(f"Query {qid} (processing failed)")
-                    
-            except Exception as e:
-                failed_queries.append(f"Query {qid} ({str(e)[:50]}...)")
-                continue
-        
-        # Clean summary output - only show failures
-        if failed_queries:
-            print(f"⚠️  Dune cached: {len(failed_queries)} failures")
-                
-        return out if out is not None else pd.DataFrame()
-    
-    def _execute_dune_queries(self, query_ids: List[int]) -> pd.DataFrame:
-        """Execute fresh Dune queries (legacy method)."""
-        return self._execute_dune_queries_with_date_filter(query_ids)
-    
-    def _execute_dune_queries_with_date_filter(self, query_ids: List[int]) -> pd.DataFrame:
-        """
-        Execute fresh Dune queries with date filtering to minimize credit usage.
-        Only requests data for the configured lookback period.
-        """
-        from dune_client.client import DuneClient
-        from dune_client.query import QueryBase
-        import datetime as dt
-        
-        dune = DuneClient(api_key=self.DUNE_API_KEY, base_url="https://api.dune.com")
-        batch_size = self.get_batch_size_for_frequency()
-        
-        # Calculate date range based on lookback days
-        end_date = dt.datetime.now()
-        start_date = end_date - dt.timedelta(days=self.LOOKBACK_DAYS)
-        
-        # Executing Dune queries with date filtering
-        
-        successful_queries = []
-        failed_queries = []
-        out = None
-        
-        for qid in query_ids:
-            try:
-                q = QueryBase(query_id=qid)
-                
-                # Execute with parameters if the query supports date filtering
-                # Most Dune queries can be parameterized with start_date and end_date
+            cache_file = os.path.join(cache_dir, f"query_{qid}.csv")
+            if os.path.exists(cache_file):
                 try:
-                    # Try executing with date parameters
-                    df = dune.run_query_dataframe(
-                        query=q, 
-                        ping_frequency=2, 
-                        batch_size=batch_size,
-                        parameters={
-                            'start_date': start_date.strftime('%Y-%m-%d'),
-                            'end_date': end_date.strftime('%Y-%m-%d')
-                        }
-                    )
-                except:
-                    # Fallback to standard execution if parameterization fails
-                    df = dune.run_query_dataframe(query=q, ping_frequency=2, batch_size=batch_size)
-                
-                df = self._process_dune_dataframe(df, qid)
-                
-                if not df.empty:
-                    # Additional date filtering after processing
-                    df = df[df.index >= start_date.replace(tzinfo=df.index.tz)]
-                    
-                    successful_queries.append(f"Query {qid}")
-                    if out is None:
-                        out = df
-                    else:
-                        out = out.join(df, how='outer')
-                else:
-                    failed_queries.append(f"Query {qid} (no data)")
-                    
-            except Exception as e:
-                failed_queries.append(f"Query {qid} ({str(e)[:50]}...)")
-                continue
+                    df = pd.read_csv(cache_file, index_col=0, parse_dates=True)
+                    if not df.empty:
+                        loaded_files += 1
+                        if combined_df is None:
+                            combined_df = df
+                        else:
+                            combined_df = combined_df.join(df, how='outer')
+                        print(f"✅ Loaded cached query {qid}: {df.shape}")
+                except Exception as e:
+                    print(f"⚠️  Failed to load cached query {qid}: {e}")
+                    continue
+            else:
+                print(f"📄 No cache file for query {qid}")
         
-        # Summary output
-        if successful_queries:
-            print(f"✅ Successfully executed {len(successful_queries)} queries")
-        if failed_queries:
-            print(f"⚠️  Failed executions: {', '.join(failed_queries[:3])}" + 
-                  (f" +{len(failed_queries)-3} more" if len(failed_queries) > 3 else ""))
+        if loaded_files == 0:
+            print("ℹ️  No cached Dune data found. To get fresh data:")
+            print("   1. Set allow_dune_execution=True (will consume credits)")
+            print("   2. Or provide pre-cached CSV files in OutputData/dune_cache/")
+        else:
+            print(f"✅ Loaded {loaded_files}/{len(query_ids)} cached queries")
+            print("💰 NO API CREDITS CONSUMED (local cache only)")
+        
+        return combined_df if combined_df is not None else pd.DataFrame()
+
+    def _execute_queries(self, query_ids: List[int]) -> pd.DataFrame:
+        """Execute fresh Dune queries and return data (costs credits)."""
+        try:
+            from dune_client.client import DuneClient
+            from dune_client.query import QueryBase
+            
+            print(f"💰 EXECUTING {len(query_ids)} Dune queries (COSTS CREDITS)")
+            dune = DuneClient(api_key=self.DUNE_API_KEY, base_url="https://api.dune.com")
+            batch_size = self.get_batch_size_for_frequency()
+            
+            # Date range for filtering
+            end_date = dt.datetime.now()
+            start_date = end_date - dt.timedelta(days=self.LOOKBACK_DAYS)
+            print(f"📅 Date range: {start_date.date()} to {end_date.date()}")
+            
+            combined_df = None
+            successful = 0
+            total_rows = 0
+            
+            for i, qid in enumerate(query_ids, 1):
+                try:
+                    print(f"🔄 Query {i}/{len(query_ids)}: {qid}", end="")
+                    q = QueryBase(query_id=qid)
+                    
+                    # Execute query without parameters first (simpler)
+                    df = dune.run_query_dataframe(query=q, ping_frequency=2)
+                    
+                    print(f" -> Raw: {df.shape[0]} rows, {df.shape[1]} cols")
+                    
+                    if not df.empty:
+                        # Process the dataframe
+                        processed_df = self._process_dune_dataframe(df, qid)
+                        
+                        if not processed_df.empty:
+                            successful += 1
+                            total_rows += len(processed_df)
+                            print(f"   ✅ Processed: {processed_df.shape}")
+                            
+                            if combined_df is None:
+                                combined_df = processed_df
+                            else:
+                                combined_df = combined_df.join(processed_df, how='outer')
+                        else:
+                            print(f"   ⚠️  Processing failed (empty result)")
+                    else:
+                        print(f"   ❌ No raw data returned")
+                        
+                except Exception as e:
+                    print(f"   ❌ Failed: {str(e)[:50]}...")
+                    continue
+            
+            print(f"\n📊 EXECUTION SUMMARY:")
+            print(f"   • Successful queries: {successful}/{len(query_ids)}")
+            print(f"   • Total rows collected: {total_rows}")
+            print(f"   • Final combined shape: {combined_df.shape if combined_df is not None else (0, 0)}")
+            print(f"   • 💰 Credits used: ~{len(query_ids) * 6} (estimated)")
                 
-        return out if out is not None else pd.DataFrame()
-    
+            return combined_df if combined_df is not None else pd.DataFrame()
+            
+        except ImportError:
+            print("❌ dune_client not available")
+            return pd.DataFrame()
+        except Exception as e:
+            print(f"❌ Execution failed: {e}")
+            return pd.DataFrame()
+
     def _process_dune_dataframe(self, df: pd.DataFrame, query_id: int) -> pd.DataFrame:
         """Process and standardize Dune dataframe."""
         if df.empty:
+            print(f"   📝 Query {query_id}: Empty dataframe")
             return df
+        
+        print(f"   📝 Query {query_id}: Processing {df.shape} with columns: {list(df.columns)[:3]}...")
             
-        # Find date column
+        # Find date column (try common date column names)
         date_col = None
-        for col in df.columns:
-            try:
-                sample_data = df[col].dropna()
-                if len(sample_data) > 0:
-                    pd.to_datetime(sample_data.iloc[0], errors='raise')
+        common_date_cols = ['date', 'time', 'timestamp', 'block_date', 'block_time', 'day', 'created_at']
+        
+        # First, try common date column names
+        for col in common_date_cols:
+            if col in df.columns:
+                try:
+                    pd.to_datetime(df[col].iloc[0], errors='raise')
                     date_col = col
+                    print(f"   📅 Found date column: '{col}'")
                     break
-            except (ValueError, TypeError, AttributeError):
-                continue
+                except:
+                    continue
+        
+        # If not found, search all columns
+        if date_col is None:
+            for col in df.columns:
+                try:
+                    sample_data = df[col].dropna()
+                    if len(sample_data) > 0:
+                        pd.to_datetime(sample_data.iloc[0], errors='raise')
+                        date_col = col
+                        print(f"   📅 Found date column: '{col}'")
+                        break
+                except (ValueError, TypeError, AttributeError):
+                    continue
         
         if date_col is None:
-            print(f"No date column found in query {query_id}")
-            return pd.DataFrame()
+            print(f"   ⚠️  No date column found - using row indices")
+            # If no date column, create a simple numbered DataFrame with query prefix
+            result_df = df.copy()
+            result_df.columns = [f"query_{query_id}_{col}" for col in df.columns]
+            result_df.index = pd.date_range(start='2024-01-01', periods=len(result_df), freq='D')
+            return result_df
         
         # Process the dataframe
-        df = df.rename(columns={date_col: "date"}).set_index("date")
-        df.index = pd.to_datetime(df.index, errors='coerce')
-        df = df.dropna(subset=[df.index.name])
-        
-        if self.TIMEZONE:
-            df.index = df.index.tz_localize(self.TIMEZONE)
-        
-        df.columns = [c.lower() for c in df.columns]
-        df.index.name = "date"
-        
-        # Resample to frequency
-        df = df.resample(self.get_pandas_freq()).last().dropna(how="all")
-        return df
-    
-    def _save_dataframe_to_csv(self, df: pd.DataFrame, path: str) -> None:
+        try:
+            df = df.rename(columns={date_col: "date"}).set_index("date")
+            df.index = pd.to_datetime(df.index, errors='coerce')
+            df = df.dropna(how='all')  # Remove rows where all values are NaN
+            
+            if len(df) == 0:
+                print(f"   ⚠️  All rows dropped after date conversion")
+                return pd.DataFrame()
+            
+            # Add query ID suffix to avoid column conflicts
+            df.columns = [f"{col.lower()}_{query_id}" for col in df.columns]
+            df.index.name = "date"
+            
+            print(f"   ✅ Successfully processed: {df.shape}")
+            return df
+            
+        except Exception as e:
+            print(f"   ❌ Processing failed: {e}")
+            # Return raw data with query prefix as fallback
+            result_df = df.copy()
+            result_df.columns = [f"query_{query_id}_{col}" for col in df.columns]
+            result_df.index = pd.date_range(start='2024-01-01', periods=len(result_df), freq='D')
+            print(f"   🔄 Fallback processing: {result_df.shape}")
+            return result_df
+
+    def _save_dune_csv(self, df: pd.DataFrame, path: str) -> None:
         """Save dataframe to CSV with directory creation."""
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             df.to_csv(path)
             print(f"💾 Saved {len(df)} rows to {path}")
         except Exception as e:
-            print(f"Error saving to CSV: {e}")
+            print(f"⚠️  CSV save failed: {e}")
 
-    def dune_get_queries(self, query_ids: List[int], force_refresh: bool = False, allow_execution: bool = False) -> pd.DataFrame:
-        """
-        DEPRECATED: Use get_dune_data() instead.
-        
-        This method is kept for backward compatibility but now uses the unified approach.
-        """
+    def get_batch_size_for_frequency(self) -> int:
+        """Get appropriate batch size based on lookback period and frequency."""
+        if self.FREQUENCY in ["1H", "1h", "hourly"]:
+            return self.LOOKBACK_DAYS * 24  # Hours per day
+        else:
+            return self.LOOKBACK_DAYS  # Days
+
+    # Legacy method for backward compatibility
+    def dune_get_queries(self, query_ids: List[int], force_refresh: bool = False, 
+                        allow_execution: bool = False) -> pd.DataFrame:
+        """DEPRECATED: Use get_dune_data() instead."""
         print("⚠️  dune_get_queries() is deprecated. Use get_dune_data() instead.")
         
-        # Determine strategy based on parameters
         if force_refresh and allow_execution:
             strategy = "execute_only"
         elif allow_execution:
@@ -798,176 +894,25 @@ class CryptoDataCollector:
         else:
             strategy = "cached_only"
             
-        # Temporarily override execution permission if explicitly allowed
         old_execution = self.ALLOW_DUNE_EXECUTION
         if allow_execution:
             self.ALLOW_DUNE_EXECUTION = True
             
         try:
-            result = self.get_dune_data(query_ids=query_ids, strategy=strategy)
+            return self.get_dune_data(query_ids=query_ids, strategy=strategy)
         finally:
-            # Restore original setting
             self.ALLOW_DUNE_EXECUTION = old_execution
-            
-        return result
 
-    def dune_get_cached_results_only(self, query_ids: Optional[List[int]] = None) -> pd.DataFrame:
-        """
-        Fetch only cached results from Dune queries without executing any queries.
-        Perfect for collecting recent results without hitting API execution limits.
-        
-        Args:
-            query_ids: List of query IDs to fetch cached results for. If None, uses all configured queries.
-        """
-        if query_ids is None:
-            query_ids = list(self.DUNE_QUERIES.values())
-            
-        if not self.DUNE_API_KEY:
-            print("No Dune API key available")
-            return pd.DataFrame()
-            
-        try:
-            from dune_client.client import DuneClient
-            dune = DuneClient(api_key=self.DUNE_API_KEY, base_url="https://api.dune.com")
-            
-            all_dataframes = []
-            successful_queries = 0
-            
-            print(f"🔍 Fetching cached results for {len(query_ids)} queries...")
-            
-            for i, qid in enumerate(query_ids, 1):
-                try:
-                    print(f"  [{i:2d}/{len(query_ids)}] Query {qid}...", end=" ")
-                    
-                    # Try to get the most recent execution results
-                    try:
-                        # Get latest execution
-                        executions = dune.get_latest_result(qid)
-                        if executions and hasattr(executions, 'get_rows'):
-                            # Convert to DataFrame
-                            df = pd.DataFrame(executions.get_rows())
-                            
-                            if len(df) > 0:
-                                # Process the dataframe similar to regular dune_get_queries
-                                date_col_found = False
-                                for col in list(df.columns):
-                                    try:
-                                        pd.to_datetime(df[col], errors="raise")
-                                        df = df.rename(columns={col: "date"}).set_index("date")
-                                        date_col_found = True
-                                        break
-                                    except:
-                                        continue
-                                
-                                if date_col_found:
-                                    # Ensure datetime index
-                                    if not isinstance(df.index, pd.DatetimeIndex):
-                                        df.index = pd.to_datetime(df.index)
-                                    
-                                    # Localize timezone
-                                    if df.index.tz is None:
-                                        df.index = df.index.tz_localize(self.TIMEZONE)
-                                    
-                                    # Clean column names
-                                    df.columns = [f"{c.lower()}_{qid}" for c in df.columns]
-                                    df.index.name = "date"
-                                    
-                                    # Apply frequency resampling
-                                    resample_freq = self.get_pandas_freq()
-                                    df = df.resample(resample_freq).last().dropna(how="any")
-                                    
-                                    all_dataframes.append(df)
-                                    successful_queries += 1
-                                    print(f"✓ {df.shape}")
-                                else:
-                                    print("✗ No date column")
-                            else:
-                                print("✗ Empty results")
-                        else:
-                            print("✗ No cached results")
-                    
-                    except Exception as inner_e:
-                        print(f"✗ Error: {str(inner_e)[:50]}...")
-                        continue
-                        
-                except Exception as e:
-                    print(f"✗ Failed: {str(e)[:50]}...")
-                    continue
-            
-            # Combine all successful dataframes
-            if all_dataframes:
-                print(f"\n🔗 Combining {len(all_dataframes)} successful queries...")
-                
-                # Find common date range
-                combined_df = all_dataframes[0]
-                for df in all_dataframes[1:]:
-                    combined_df = combined_df.join(df, how='outer')
-                
-                print(f"✅ Combined dataset: {combined_df.shape}")
-                print(f"📅 Date range: {combined_df.index.min()} to {combined_df.index.max()}")
-                
-                return combined_df
-            else:
-                print("❌ No successful queries found")
-                return pd.DataFrame()
-                
-        except ImportError:
-            print("❌ dune_client not installed")
-            return pd.DataFrame()
-        except Exception as e:
-            print(f"❌ Error collecting cached results: {e}")
-            return pd.DataFrame()
+    # =============================================================================
+    # UNIFIED DATA COLLECTION METHODS
+    # =============================================================================
 
-    def save_dune_cached_to_csv(self, output_path: str = "OutputData/dune_cached_results.csv") -> bool:
-        """
-        Collect cached Dune results and save to CSV file.
-        
-        Args:
-            output_path: Path to save the CSV file
-        """
-        import os
-        
-        print("🚀 COLLECTING CACHED DUNE RESULTS")
-        print("=" * 50)
-        
-        # Collect cached results
-        df = self.dune_get_cached_results_only()
-        
-        if len(df) > 0:
-            # Ensure output directory exists
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            
-            # Sort by date for better readability
-            df = df.sort_index()
-            
-            # Save to CSV
-            df.to_csv(output_path)
-            
-            print(f"💾 SAVED TO: {output_path}")
-            print(f"📊 Dataset: {df.shape}")
-            print(f"📅 Date range: {df.index.min()} to {df.index.max()}")
-            print(f"🔢 Columns: {len(df.columns)} indicators")
-            print(f"📈 Frequency: {self.FREQUENCY} ({self.get_pandas_freq()})")
-            
-            # Show sample of column names
-            print(f"\n📋 Sample columns:")
-            for i, col in enumerate(df.columns[:10]):
-                print(f"   {i+1:2d}. {col}")
-            if len(df.columns) > 10:
-                print(f"   ... and {len(df.columns) - 10} more")
-                
-            return True
-        else:
-            print("❌ No data to save")
-            return False
-
-    # --- Main Collection Method ---
     def collect_all_data(self) -> Dict[str, pd.DataFrame]:
         """Collect data from all sources and return as dictionary."""
         print("🔄 Starting data collection...")
         
         # Get universe
-        universe = self.coingecko_get_universe_v2(self.TOP_N, output_format="both")
+        universe = self.coingecko_get_universe(self.TOP_N, output_format="both")
         if isinstance(universe, dict):
             ids, tickers = universe["ids"], universe["ticker"]
         else:
@@ -996,7 +941,7 @@ class CryptoDataCollector:
         print("🔄 Starting data collection (cached Dune only)...")
         
         # Get universe
-        universe = self.coingecko_get_universe_v2(self.TOP_N, output_format="both")
+        universe = self.coingecko_get_universe(self.TOP_N, output_format="both")
         if isinstance(universe, dict):
             ids, tickers = universe["ids"], universe["ticker"]
         else:

@@ -26,9 +26,12 @@ class DataConfig:
     frequency: str = "1D"
     sleep_time: int = 10  # seconds between API calls
     
-    # Dune data collection strategy
-    dune_strategy: str = "csv_cached_execute"  # "csv_only", "cached_only", "execute_only", "csv_cached_execute"
-    allow_dune_execution: bool = False  # Safety flag to prevent accidental credit usage
+    # 🛡️ Dune API Credit Protection Settings
+    dune_strategy: str = "cached_only"  # SAFE DEFAULT: "csv_only", "cached_only", "direct_cache", "execute_only"
+    allow_dune_execution: bool = False  # CRITICAL: Prevents accidental credit usage
+    
+    # Recommended Dune queries for volatility forecasting (credits only used if explicitly enabled)
+    key_dune_queries: Optional[List[int]] = None  # Will use default set: [5893929, 5893461, 5893952, 5893947, 5894076, 5893557, 5893307, 5894092, 5894035, 5893555, 5893552, 5893566, 5893781, 5893821, 5892650, 5893009, 5892998, 5893911, 5892742, 5892720, 5891651, 5892696, 5892424, 5892227, 5891691]
 
 
 @dataclass
@@ -126,11 +129,12 @@ class APIConfig:
                 "query_22": 5892696,
                 "query_23": 5892424,
                 "query_24": 5892227,
-                "query_25": 5891691,
-                "query_26": 5795645
+                "query_25": 5891691
             }
 
-# Ethereum Staking Analysis and DeFi Metrics Dune Query Details:
+# Dune Query Details:
+#  All available on my dune dashboards: 
+# Daily Frequency:https://dune.com/amaliohidalgo_team_4477/crypto-market-volatility-forecast-indicators-daily
 # query_01 (5893929): cum_deposited_eth - Measures total ETH staked over time, indicating network participation.
 # query_02 (5893461): economic_security - Assesses the financial security of the Ethereum network by valuing staked ETH in USD.
 # query_03 (5893952): cum_validators - Tracks total validators, reflecting network decentralization.
@@ -156,7 +160,8 @@ class APIConfig:
 # query_23 (5892424): governance_activity - Tracks DAO governance participation and voting metrics.
 # query_24 (5892227): yield_farming - Monitors yield farming rewards and liquidity mining metrics.
 # query_25 (5891691): perpetual_volume - Tracks perpetual futures trading volume on-chain.
-# query_26 (5795645): institutional_flows - Monitors institutional trading flows and large transactions.
+# 
+# Hourly Frequency: **Coming Soon**
 
         if self.fred_series is None:
             self.fred_series = {

@@ -7,6 +7,7 @@ scipy>=1.7.0
 scikit-learn>=1.0.0
 xgboost>=1.5.0
 optuna>=3.0.0
+optuna-integration[dask]>=3.0.0
 
 # Time Series Feature Extraction
 tsfresh>=0.20.0
