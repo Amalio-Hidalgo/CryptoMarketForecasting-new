@@ -531,11 +531,39 @@ class CryptoDataCollector:
                 key_queries = [5893929, 5893461, 5893952, 5893947, 5894076, 5893557, 5893307, 5894092, 5894035, 5893555, 5893552, 5893566, 5893781, 5893821, 5892650, 5893009, 5892998, 5893911, 5892742, 5892720, 5891651, 5892696, 5892424, 5892227, 5891691]  # All 25 queries
                 query_ids = key_queries
             
-            print(f"🔍 Checking {len(query_ids)} queries for cached results...")
-            dune = DuneClient(api_key=self.DUNE_API_KEY)
+            # Map query IDs to your custom titles
+            query_titles = {
+                5893929: "cum_deposited_eth",
+                5893461: "economic_security", 
+                5893952: "cum_validators",
+                5893947: "staked_validators",
+                5894076: "daily_dex_volume",
+                5893557: "btc_etf_flows",
+                5893307: "eth_etf_flows", 
+                5894092: "total_defi_users",
+                5894035: "median_gas",
+                5893555: "staked_eth_category",
+                5893552: "lsd_share",
+                5893566: "lsd_tvl",
+                5893781: "staking_rewards",
+                5893821: "validator_performance",
+                5892650: "ethereum_supply",
+                5893009: "network_activity",
+                5892998: "defi_tvl",
+                5893911: "nft_volume",
+                5892742: "bridge_activity",
+                5892720: "mev_activity",
+                5891651: "lending_metrics",
+                5892696: "derivative_volume",
+                5892424: "governance_activity",
+                5892227: "yield_farming",
+                5891691: "perpetual_volume"
+            }
             
+            dune = DuneClient(api_key=self.DUNE_API_KEY)
             results = {}
             cached_count = 0
+            error_count = 0
             
             for qid in query_ids:
                 try:
@@ -544,24 +572,25 @@ class CryptoDataCollector:
                     
                     if result and result.result and result.result.rows:
                         df = pd.DataFrame([dict(row) for row in result.result.rows])
-                        results[f"query_{qid}"] = df
+                        # Use your custom title instead of generic query number
+                        title = query_titles.get(qid, f"query_{qid}")
+                        results[title] = df
                         cached_count += 1
-                        print(f"   ✅ Query {qid}: {len(df)} rows (cached)")
                     else:
-                        print(f"   ⚠️  Query {qid}: No cached result")
+                        error_count += 1
                         
                 except Exception as e:
-                    print(f"   ❌ Query {qid}: {str(e)[:30]}...")
+                    error_count += 1
             
             if cached_count > 0:
                 print(f"🎊 Successfully retrieved {cached_count}/{len(query_ids)} cached datasets")
                 print(f"💰 Credits used: 0 (cached results)")
-                
-                # Simple combination - just concatenate with query prefixes
+                # Simple combination - preserve original column names
                 combined_df = pd.DataFrame()
                 for name, df in results.items():
                     if not df.empty:
-                        df.columns = [f"{name}_{col}" for col in df.columns]
+                        print(f"   🔍 Processing {name}: columns = {list(df.columns)[:3]}...")
+                        # Keep original column names - no prefixes
                         if combined_df.empty:
                             combined_df = df
                         else:
@@ -569,7 +598,6 @@ class CryptoDataCollector:
                 
                 return combined_df
             else:
-                print("ℹ️  No cached data available")
                 return pd.DataFrame()
                 
         except ImportError:
@@ -833,9 +861,9 @@ class CryptoDataCollector:
         
         if date_col is None:
             print(f"   ⚠️  No date column found - using row indices")
-            # If no date column, create a simple numbered DataFrame with query prefix
+            # If no date column, create a simple numbered DataFrame with original column names
             result_df = df.copy()
-            result_df.columns = [f"query_{query_id}_{col}" for col in df.columns]
+            result_df.columns = [col.lower() for col in df.columns]
             result_df.index = pd.date_range(start='2024-01-01', periods=len(result_df), freq='D')
             return result_df
         
@@ -849,8 +877,8 @@ class CryptoDataCollector:
                 print(f"   ⚠️  All rows dropped after date conversion")
                 return pd.DataFrame()
             
-            # Add query ID suffix to avoid column conflicts
-            df.columns = [f"{col.lower()}_{query_id}" for col in df.columns]
+            # Keep original column names from Dune queries
+            df.columns = [col.lower() for col in df.columns]
             df.index.name = "date"
             
             print(f"   ✅ Successfully processed: {df.shape}")
@@ -858,9 +886,9 @@ class CryptoDataCollector:
             
         except Exception as e:
             print(f"   ❌ Processing failed: {e}")
-            # Return raw data with query prefix as fallback
+            # Return raw data with original column names as fallback
             result_df = df.copy()
-            result_df.columns = [f"query_{query_id}_{col}" for col in df.columns]
+            result_df.columns = [col.lower() for col in df.columns]
             result_df.index = pd.date_range(start='2024-01-01', periods=len(result_df), freq='D')
             print(f"   🔄 Fallback processing: {result_df.shape}")
             return result_df
