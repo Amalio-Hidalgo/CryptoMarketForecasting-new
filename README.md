@@ -3,7 +3,6 @@
 A comprehensive demonstration of cryptocurrency market analysis and forecasting techniques, showcasing the evolution from basic price prediction to advanced volatility forecasting through multiple development iterations.
 
 This repository has a complementary Dune dashboard- with SQL queries sourcing a broad collection of on-chain-analytics- located at: https://dune.com/amaliohidalgo/crypto-market-volatility-forecast-indicators-daily
----
 
 ## 🚀 Projects Overview
 
