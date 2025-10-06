@@ -608,9 +608,9 @@ class CryptoDataCollector:
                                 df[column] = pd.to_datetime(df[column], utc=True)
                                 # Convert to target timezone and then to date for consistency
                                 if df[column].dt.tz is not None:
-                                    df[column] = df[column].dt.tz_convert(self.timezone)
+                                    df[column] = df[column].dt.tz_convert(self.TIMEZONE)
                                 else:
-                                    df[column] = df[column].dt.tz_localize(self.timezone)
+                                    df[column] = df[column].dt.tz_localize(self.TIMEZONE)
                                 # Convert to date-only for consistent joining
                                 df[column] = df[column].dt.date
                                 df = df.rename(columns={column: 'date'})
@@ -719,9 +719,9 @@ class CryptoDataCollector:
                                 df[column] = pd.to_datetime(df[column], utc=True)
                                 # Convert to target timezone and then to date for consistency
                                 if df[column].dt.tz is not None:
-                                    df[column] = df[column].dt.tz_convert(self.timezone)
+                                    df[column] = df[column].dt.tz_convert(self.TIMEZONE)
                                 else:
-                                    df[column] = df[column].dt.tz_localize(self.timezone)
+                                    df[column] = df[column].dt.tz_localize(self.TIMEZONE)
                                 # Convert to date-only for consistent joining
                                 df[column] = df[column].dt.date
                                 df = df.rename(columns={column: 'date'})
@@ -792,6 +792,7 @@ class CryptoDataCollector:
         """
         
         # Try API first if key is available
+        csv_data = pd.DataFrame()
         if self.DUNE_API_KEY:
             try:
                 if allow_execution:
@@ -808,7 +809,7 @@ class CryptoDataCollector:
                 print(f"⚠️ Dune API failed: {e}")
                 if try_csv_fallback:
                     print("💡 Trying CSV fallback...")
-                    csv_path = ["OutputData/dune_data_unified.csv"]
+                    csv_path = "OutputData/dune_data_unified.csv"
                     csv_data = self._load_dune_csv(csv_path)
                 else: 
                     print("💡 CSV fallback disabled")
@@ -821,7 +822,7 @@ class CryptoDataCollector:
             print("❌ No Dune API key available")
             if try_csv_fallback:
                 print("💡 Trying CSV fallback...")
-                csv_path = ["OutputData/dune_data_unified.csv"]
+                csv_path = "OutputData/dune_data_unified.csv"
                 csv_data = self._load_dune_csv(csv_path)
             else: 
                 print("💡 CSV fallback disabled")
@@ -833,6 +834,7 @@ class CryptoDataCollector:
         
         # All sources failed
         print("⚠️ No Dune data available from any source")
+        return pd.DataFrame()
         return pd.DataFrame()
 
     def _load_dune_csv(self, csv_path: str) -> pd.DataFrame:
