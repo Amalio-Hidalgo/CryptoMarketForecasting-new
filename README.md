@@ -48,9 +48,9 @@ Research environment containing experimental work and development iterations:
 
 | Use Case | Recommended Version | Why |
 |----------|-------------------|-----|
-| **Production volatility forecasting** | V2 | Complete feature set, robust error handling, scalable |
+| **Volatility forecasting** | V2 | Complete feature set, robust error handling, scalable |
 | **Learning/Educational** | V2 | Well-documented, configurable, safer API usage |
-| **Price prediction research** | V1 | Simpler, focused on price movements |
+| **Simple price-predictions** | V1 | Simpler, focused on price movements |
 | **Development/Contribution** | V2 + Dev Workspace | Latest codebase + research context |
 
 ## 🚀 Explore the Code (V2 - Latest Implementation)
