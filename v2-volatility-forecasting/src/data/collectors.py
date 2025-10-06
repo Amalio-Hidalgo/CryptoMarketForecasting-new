@@ -597,20 +597,29 @@ class CryptoDataCollector:
                         
                     results[query_name] = response
                     df = response.copy()
-                    # Enhanced date detection and indexing logic with conflict prevention
+                    # Enhanced date detection with proper timezone handling
                     query_name = self.DUNE_QUERIES[qid]
                     date_column_found = False
                     
                     for column in df.columns:
                         if df[column].dtype == object and not date_column_found:
                             try: 
-                                # Convert to datetime and then to date
-                                df[column] = pd.to_datetime(df[column])
+                                # Convert to datetime with UTC assumption, then localize to target timezone
+                                df[column] = pd.to_datetime(df[column], utc=True)
+                                # Convert to target timezone and then to date for consistency
+                                if df[column].dt.tz is not None:
+                                    df[column] = df[column].dt.tz_convert(self.timezone)
+                                else:
+                                    df[column] = df[column].dt.tz_localize(self.timezone)
+                                # Convert to date-only for consistent joining
+                                df[column] = df[column].dt.date
                                 df = df.rename(columns={column: 'date'})
                                 df = df.set_index('date')
+                                # Convert index back to DatetimeIndex for consistency
+                                df.index = pd.DatetimeIndex(df.index)
                                 date_column_found = True
                                 break
-                            except: 
+                            except Exception as e:
                                 continue
                     
                     # Process DataFrame and preserve original column names
@@ -699,20 +708,29 @@ class CryptoDataCollector:
                     response = dune.get_execution_results_csv(query)
                     df = pd.DataFrame(response)
                     
-                    # Enhanced date detection and indexing logic with conflict prevention  
+                    # Enhanced date detection with proper timezone handling
                     query_name = self.DUNE_QUERIES[qid]
                     date_column_found = False
                     
                     for column in df.columns:
                         if df[column].dtype == object and not date_column_found:
                             try: 
-                                # Convert to datetime and then to date
-                                df[column] = pd.to_datetime(df[column])
+                                # Convert to datetime with UTC assumption, then localize to target timezone
+                                df[column] = pd.to_datetime(df[column], utc=True)
+                                # Convert to target timezone and then to date for consistency
+                                if df[column].dt.tz is not None:
+                                    df[column] = df[column].dt.tz_convert(self.timezone)
+                                else:
+                                    df[column] = df[column].dt.tz_localize(self.timezone)
+                                # Convert to date-only for consistent joining
+                                df[column] = df[column].dt.date
                                 df = df.rename(columns={column: 'date'})
                                 df = df.set_index('date')
+                                # Convert index back to DatetimeIndex for consistency
+                                df.index = pd.DatetimeIndex(df.index)
                                 date_column_found = True
                                 break
-                            except: 
+                            except Exception as e:
                                 continue
                    
                     # Process DataFrame and preserve original column names
