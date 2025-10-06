@@ -1,7 +1,39 @@
 """
 Configuration Management for Cryptocurrency Volatility Forecasting
 
-This module handles all configuration settings from LatestNotebook.ipynb.
+This module provides centralized configuration management for the volatility forecasting
+pipeline. It defines data collection parameters, feature engineering settings, model
+hyperparameters, and API configuration with sensible defaults.
+
+The configuration is organized into logical groups using dataclasses for type safety
+and ease of use. All settings can be overridden when initializing the pipeline.
+
+Key Configuration Areas:
+    - Data Collection: API settings, data sources, time ranges
+    - Feature Engineering: TSFresh settings, technical indicators
+    - Machine Learning: Model parameters, optimization settings
+    - Infrastructure: Dask cluster, caching, output paths
+
+Environment Variables:
+    The following environment variables should be set for full functionality:
+    - COINGECKO_API_KEY: CoinGecko Pro API key
+    - DUNE_API_KEY: Dune Analytics API key  
+    - FRED_API_KEY: Federal Reserve Economic Data API key
+
+Example:
+    ```python
+    from config import DataConfig, MLConfig
+    
+    # Use default configuration
+    data_config = DataConfig()
+    
+    # Override specific settings
+    custom_config = DataConfig(
+        target_coin="bitcoin",
+        lookback_days=730,
+        frequency="1H"
+    )
+    ```
 """
 
 import os
@@ -17,7 +49,24 @@ load_dotenv()
 
 @dataclass
 class DataConfig:
-    """Data collection configuration."""
+    """
+    Data collection configuration parameters.
+    
+    Defines settings for collecting cryptocurrency market data, on-chain metrics,
+    volatility indices, and macroeconomic indicators. All data sources are aligned
+    to the specified timezone and frequency.
+    
+    Attributes:
+        target_coin (str): Primary cryptocurrency for volatility forecasting
+        base_fiat (str): Base fiat currency for price data  
+        top_n (int): Number of top cryptocurrencies to include
+        lookback_days (int): Historical data window in days
+        timezone (str): Target timezone for data alignment
+        frequency (str): Data collection frequency ("1D" daily, "1H" hourly)
+        sleep_time (int): Delay between API calls to respect rate limits
+        use_cached_dune_only (bool): True=use cached data only, False=allow fresh execution
+        key_dune_queries (List[int], optional): Specific Dune queries to execute
+    """
     target_coin: str = "ethereum"
     base_fiat: str = "usd"
     top_n: int = 10
@@ -27,16 +76,29 @@ class DataConfig:
     sleep_time: int = 10  # seconds between API calls
     
     # 🛡️ Dune API Credit Protection Settings
-    dune_strategy: str = "cached_only"  # SAFE DEFAULT: "csv_only", "cached_only", "direct_cache", "execute_only"
-    allow_dune_execution: bool = False  # CRITICAL: Prevents accidental credit usage
+    use_cached_dune_only: bool = True  # SAFE DEFAULT: True=cached only, False=allow fresh execution
     
-    # Recommended Dune queries for volatility forecasting (credits only used if explicitly enabled)
-    key_dune_queries: Optional[List[int]] = None  # Will use default set: [5893929, 5893461, 5893952, 5893947, 5894076, 5893557, 5893307, 5894092, 5894035, 5893555, 5893552, 5893566, 5893781, 5893821, 5892650, 5893009, 5892998, 5893911, 5892742, 5892720, 5891651, 5892696, 5892424, 5892227, 5891691]
+    # Recommended Dune queries for volatility forecasting (21 curated queries)
+    key_dune_queries: Optional[List[int]] = None  # Will use default set: [5893929, 5893461, 5893557, 5893307, 5894092, 5894035, 5893555, 5893552, 5893566, 5893781, 5893821, 5893009, 5892998, 5893911, 5892742, 5892720, 5891651, 5892696, 5892424, 5892227, 5891691]
 
 
 @dataclass
 class TSFreshConfig:
-    """TSFresh feature engineering configuration."""
+    """
+    TSFresh feature engineering configuration.
+    
+    Controls automated time series feature extraction using the TSFresh library.
+    Features are extracted over rolling windows and filtered for relevance.
+    
+    Attributes:
+        time_window (int): Rolling window size in days for feature extraction
+        extraction_settings (str): Feature extraction complexity level
+                                  - "minimal": Basic statistical features
+                                  - "efficient": Balanced feature set (recommended)
+                                  - "comprehensive": All available features
+        fdr_level (float): False discovery rate for feature selection
+        random_seed (int): Random seed for reproducible feature extraction
+    """
     time_window: int = 14  # days for rolling window
     extraction_settings: str = "efficient"  # minimal, efficient, comprehensive
     fdr_level: float = 0.05
@@ -45,7 +107,22 @@ class TSFreshConfig:
 
 @dataclass
 class MLConfig:
-    """Machine learning pipeline configuration."""
+    """
+    Machine learning pipeline configuration.
+    
+    Defines parameters for model training, hyperparameter optimization, and
+    cross-validation. Uses XGBoost as the primary model with Optuna optimization.
+    
+    Attributes:
+        n_trials (int): Number of Optuna hyperparameter optimization trials
+        n_rounds (int): Maximum XGBoost boosting rounds
+        early_stopping (int): Early stopping patience for XGBoost training
+        n_splits (int): Number of time series cross-validation splits
+        fdr_level (float): False discovery rate for feature selection
+        random_seed (int): Random seed for reproducible model training  
+        tree_method (str): XGBoost tree construction algorithm
+        eval_metric (str): Model evaluation metric for optimization
+    """
     n_trials: int = 100  # Optuna trials
     n_rounds: int = 200  # XGBoost rounds
     eval_metric: str = 'mae'
@@ -81,10 +158,10 @@ class APIConfig:
     merlin_user_address: str = ""
     
     # Dune Analytics queries
-    dune_queries: Dict[str, int] = None
+    dune_queries: Optional[Dict[str, int]] = None
     
     # FRED series mappings  
-    fred_series: Dict[str, str] = None
+    fred_series: Optional[Dict[str, str]] = None
     
     # File paths
     dune_csv_path: str = "OutputData/Dune_Metrics.csv"
@@ -103,33 +180,29 @@ class APIConfig:
         self.merlin_user_address = os.getenv('MERLIN_USER_ADDRESS', '')
         
         if self.dune_queries is None:
-            # Daily query IDs (26 total)
+            # Daily query IDs (21 total)
             self.dune_queries = {
                 "query_01": 5893929,
                 "query_02": 5893461,
-                "query_03": 5893952,
-                "query_04": 5893947,
-                "query_05": 5894076,
-                "query_06": 5893557,
-                "query_07": 5893307,
-                "query_08": 5894092,
-                "query_09": 5894035,
-                "query_10": 5893555,
-                "query_11": 5893552,
-                "query_12": 5893566,
-                "query_13": 5893781,
-                "query_14": 5893821,
-                "query_15": 5892650,
-                "query_16": 5893009,
-                "query_17": 5892998,
-                "query_18": 5893911,
-                "query_19": 5892742,
-                "query_20": 5892720,
-                "query_21": 5891651,
-                "query_22": 5892696,
-                "query_23": 5892424,
-                "query_24": 5892227,
-                "query_25": 5891691
+                "query_03": 5893557,
+                "query_04": 5893307,
+                "query_05": 5894092,
+                "query_06": 5894035,
+                "query_07": 5893555,
+                "query_08": 5893552,
+                "query_09": 5893566,
+                "query_10": 5893781,
+                "query_11": 5893821,
+                "query_12": 5893009,
+                "query_13": 5892998,
+                "query_14": 5893911,
+                "query_15": 5892742,
+                "query_16": 5892720,
+                "query_17": 5891651,
+                "query_18": 5892696,
+                "query_19": 5892424,
+                "query_20": 5892227,
+                "query_21": 5891691
             }
 
 # Dune Query Details:
@@ -137,29 +210,25 @@ class APIConfig:
 # Daily Frequency:https://dune.com/amaliohidalgo_team_4477/crypto-market-volatility-forecast-indicators-daily
 # query_01 (5893929): cum_deposited_eth - Measures total ETH staked over time, indicating network participation.
 # query_02 (5893461): economic_security - Assesses the financial security of the Ethereum network by valuing staked ETH in USD.
-# query_03 (5893952): cum_validators - Tracks total validators, reflecting network decentralization.
-# query_04 (5893947): staked_validators - Monitors active validators, showing network stability and security.
-# query_05 (5894076): daily_dex_volume - Tracks daily trading volume on decentralized exchanges, indicating market activity.
-# query_06 (5893557): btc_etf_flows - Monitors Bitcoin ETF inflows/outflows, reflecting institutional sentiment.
-# query_07 (5893307): eth_etf_flows - Monitors Ethereum ETF inflows/outflows, reflecting institutional sentiment.
-# query_08 (5894092): total_defi_users - Counts unique users interacting with DeFi protocols, indicating ecosystem growth.
-# query_09 (5894035): median_gas - Measures median gas prices on Ethereum, reflecting network congestion and user costs.
-# query_10 (5893555): staked_eth_category - Analyzes staked ETH distribution across different categories.
-# query_11 (5893552): lsd_share - Tracks liquid staking derivatives market share and distribution.
-# query_12 (5893566): lsd_tvl - Monitors total value locked in liquid staking derivative protocols.
-# query_13 (5893781): staking_rewards - Tracks staking rewards and yield metrics for validators.
-# query_14 (5893821): validator_performance - Monitors validator performance metrics and attestation rates.
-# query_15 (5892650): ethereum_supply - Tracks Ethereum supply metrics including issuance and burn rates.
-# query_16 (5893009): network_activity - Measures daily active addresses and transaction metrics.
-# query_17 (5892998): defi_tvl - Tracks total value locked across DeFi protocols on Ethereum.
-# query_18 (5893911): nft_volume - Monitors NFT trading volume and market activity metrics.
-# query_19 (5892742): bridge_activity - Tracks cross-chain bridge volumes and activity.
-# query_20 (5892720): mev_activity - Monitors MEV (Maximal Extractable Value) metrics and trends.
-# query_21 (5891651): lending_metrics - Tracks lending protocol metrics including borrow/supply rates.
-# query_22 (5892696): derivative_volume - Monitors on-chain derivatives trading volume.
-# query_23 (5892424): governance_activity - Tracks DAO governance participation and voting metrics.
-# query_24 (5892227): yield_farming - Monitors yield farming rewards and liquidity mining metrics.
-# query_25 (5891691): perpetual_volume - Tracks perpetual futures trading volume on-chain.
+# query_03 (5893557): btc_etf_flows - Monitors Bitcoin ETF inflows/outflows, reflecting institutional sentiment.
+# query_04 (5893307): eth_etf_flows - Monitors Ethereum ETF inflows/outflows, reflecting institutional sentiment.
+# query_05 (5894092): total_defi_users - Counts unique users interacting with DeFi protocols, indicating ecosystem growth.
+# query_06 (5894035): median_gas - Measures median gas prices on Ethereum, reflecting network congestion and user costs.
+# query_07 (5893555): staked_eth_category - Analyzes staked ETH distribution across different categories.
+# query_08 (5893552): lsd_share - Tracks liquid staking derivatives market share and distribution.
+# query_09 (5893566): lsd_tvl - Monitors total value locked in liquid staking derivative protocols.
+# query_10 (5893781): staking_rewards - Tracks staking rewards and yield metrics for validators.
+# query_11 (5893821): validator_performance - Monitors validator performance metrics and attestation rates.
+# query_12 (5893009): network_activity - Measures daily active addresses and transaction metrics.
+# query_13 (5892998): defi_tvl - Tracks total value locked across DeFi protocols on Ethereum.
+# query_14 (5893911): nft_volume - Monitors NFT trading volume and market activity metrics.
+# query_15 (5892742): bridge_activity - Tracks cross-chain bridge volumes and activity.
+# query_16 (5892720): mev_activity - Monitors MEV (Maximal Extractable Value) metrics and trends.
+# query_17 (5891651): lending_metrics - Tracks lending protocol metrics including borrow/supply rates.
+# query_18 (5892696): derivative_volume - Monitors on-chain derivatives trading volume.
+# query_19 (5892424): governance_activity - Tracks DAO governance participation and voting metrics.
+# query_20 (5892227): yield_farming - Monitors yield farming rewards and liquidity mining metrics.
+# query_21 (5891691): perpetual_volume - Tracks perpetual futures trading volume on-chain.
 # 
 # Hourly Frequency: **Coming Soon**
 
@@ -267,8 +336,7 @@ def save_config_to_file(config: Config, config_path: str = "config.json") -> Non
                 'timezone': config.data.timezone,
                 'frequency': config.data.frequency,
                 'sleep_time': config.data.sleep_time,
-                'dune_strategy': config.data.dune_strategy,
-                'allow_dune_execution': config.data.allow_dune_execution
+                'use_cached_dune_only': config.data.use_cached_dune_only
             },
             'tsfresh': {
                 'time_window': config.tsfresh.time_window,

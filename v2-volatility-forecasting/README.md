@@ -43,18 +43,7 @@ The toolkit aggregates data from five primary sources, each serving a specific a
 6. DGS2: 2-Year Treasury Constant Maturity Rate, indicates short-term interest rates.
 7. DGS10: 10-Year Treasury Constant Maturity Rate, indicates long-term interest rates.
 
-- **Dune Analytics**: Offers daily on-chain metrics including transaction volumes, active addresses, network fees, and DeFi protocol activity. These blockchain-native indicators provide fundamental analysis components that traditional financial data cannot capture, essential for understanding crypto-specific volatility drivers.
-1. Ethereum Staking Analysis Dune Query Details:
-   - cum_deposited_eth: Measures total ETH staked over time, indicating network participation.
-   - economic_security: Assesses the financial security of the Ethereum network by valuing staked ETH in USD.
-   - cum_validators: Tracks total validators, reflecting network decentralization.
-   - staked_validators: Monitors active validators, showing network stability and security.
-2.  Daily_dex_volume: Tracks daily trading volume on decentralized exchanges, indicating market activity.
-3.  Btc_etf_flows: Monitors Bitcoin ETF inflows/outflows, reflecting institutional sentiment.
-4.  Eth_etf_flows: Monitors Ethereum ETF inflows/outflows, reflecting institutional sentiment.
-5.  Total_defi_users: Counts unique users interacting with DeFi protocols, indicating ecosystem growth.
-6.  Median_gas: Measures median gas prices on Ethereum, reflecting network congestion and user costs.
-7.  Staked_eth_category: Analyzes staked ETH distribution across different categories.
+- **Dune Analytics**: Offers daily on-chain metrics including transaction volumes, active addresses, network fees, and DeFi protocol activity. These blockchain-native indicators provide fundamental analysis components that traditional financial data cannot capture, essential for understanding crypto-specific volatility drivers. In the notebook, I use queries sourced from the following complementary dashboard: https://dune.com/amaliohidalgo/crypto-market-volatility-forecast-indicators-daily
 
 ### Feature Engineering Pipeline
 The feature engineering component combines traditional technical analysis with automated time series feature extraction:

@@ -2,6 +2,9 @@
 
 A comprehensive demonstration of cryptocurrency market analysis and forecasting techniques, showcasing the evolution from basic price prediction to advanced volatility forecasting through multiple development iterations.
 
+This repository has a complementary Dune dashboard- with SQL queries sourcing a broad collection of on-chain-analytics- located at: https://dune.com/amaliohidalgo/crypto-market-volatility-forecast-indicators-daily
+
+
 ## 🚀 Projects Overview
 
 ### 🎯 V2: Volatility Forecasting (Latest & Recommended)
@@ -42,15 +45,6 @@ Research environment containing experimental work and development iterations:
 - **🔄 Iteration history**: Evolution from V1 to V2
 - **⚙️ Work-in-progress**: Future features and enhancements
 
-## 🎯 Which Version Should I Use?
-
-| Use Case | Recommended Version | Why |
-|----------|-------------------|-----|
-| **Production volatility forecasting** | V2 | Complete feature set, robust error handling, scalable |
-| **Learning/Educational** | V2 | Well-documented, configurable, safer API usage |
-| **Price prediction research** | V1 | Simpler, focused on price movements |
-| **Development/Contribution** | V2 + Dev Workspace | Latest codebase + research context |
-
 ## 🚀 Explore the Code (V2 - Latest Implementation)
 
 ```bash
@@ -80,7 +74,7 @@ jupyter lab main_pipeline.ipynb
 | **Feature Engineering** | Basic TSFresh | Advanced + Custom |
 | **ML Framework** | XGBoost | XGBoost + Optuna |
 | **Scalability** | Single-threaded | Dask Distributed |
-| **Error Handling** | Basic | Enterprise-grade |
+| **Error Handling** | Basic | Advanced |
 | **Configuration** | Hardcoded | Fully configurable |
 | **API Safety** | Manual | Credit-safe automation |
 
@@ -110,15 +104,6 @@ This repository is designed for technical demonstration and review:
 
 See [CODE_REVIEW_GUIDE.md](CODE_REVIEW_GUIDE.md) for detailed exploration guidance.
 
-## 📈 Performance Benchmarks
-
-| Metric | V1 | V2 |
-|--------|----|----|
-| **Data Collection Speed** | ~10 min | ~2 min (parallelized) |
-| **Feature Engineering** | ~15 min | ~5 min (optimized) |
-| **Model Training** | ~20 min | ~8 min (Optuna + early stopping) |
-| **Memory Usage** | ~4GB | ~2GB (Dask chunking) |
-| **API Credit Usage** | High risk | Optimized + safe |
 
 ## 🔄 Migration Guide
 
@@ -147,12 +132,7 @@ This project demonstrates the integration of several excellent open-source techn
 - **TSFresh Team**: Automated feature extraction framework
 - **XGBoost Developers**: Gradient boosting machine learning library
 - **Dune Analytics**: On-chain data API platform
-- **Dask Community**: Distributed computing framework
-
-## 🎯 About This Repository
-
-This repository serves as a technical demonstration and educational resource, showcasing the evolution of cryptocurrency market analysis techniques from basic price prediction to advanced volatility forecasting.
-
+- **Dask Community**: Distributed computing framework.
 ---
 
 **⭐ If this project demonstrates valuable technical approaches, please give it a star!**

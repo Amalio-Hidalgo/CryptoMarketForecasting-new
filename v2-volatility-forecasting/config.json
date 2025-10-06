@@ -1,0 +1,53 @@
+{
+  "data": {
+    "target_coin": "ethereum",
+    "base_fiat": "usd",
+    "top_n": 10,
+    "lookback_days": 365,
+    "timezone": "Europe/Madrid",
+    "frequency": "1D",
+    "sleep_time": 10
+  },
+  "tsfresh": {
+    "time_window": 14,
+    "extraction_settings": "efficient",
+    "fdr_level": 0.05,
+    "random_seed": 42
+  },
+  "ml": {
+    "n_trials": 100,
+    "n_rounds": 200,
+    "eval_metric": "mae",
+    "tree_method": "hist",
+    "early_stopping_rounds": 25,
+    "splits": 10,
+    "random_seed": 42
+  },
+  "dask": {
+    "n_workers": 4,
+    "threads_per_worker": 5,
+    "memory_limit": "8GB",
+    "dashboard_port": 8787,
+    "processes": true
+  },
+  "api": {
+    "dune_queries": {
+      "economic_security": 1933076,
+      "daily_dex_volume": 4388,
+      "btc_etf_flows": 5795477,
+      "eth_etf_flows": 5795645,
+      "total_defi_users": 2972,
+      "median_gas": 2981260
+    },
+    "fred_series": {
+      "VIXCLS": "vix_equity_vol",
+      "MOVE": "move_bond_vol",
+      "OVXCLS": "ovx_oil_vol",
+      "GVZCLS": "gvz_gold_vol",
+      "DTWEXBGS": "usd_trade_weighted_index",
+      "DGS2": "us_2y_treasury_yield",
+      "DGS10": "us_10y_treasury_yield"
+    },
+    "dune_csv_path": "OutputData/Dune_Metrics.csv"
+  }
+}
