@@ -142,30 +142,30 @@ class DaskConfig:
     processes: bool = True
 
 
+from dataclasses import dataclass, field
+
 @dataclass
 class APIConfig:
     """API configuration and endpoints."""
     # API Keys loaded from environment variables
-    coingecko_api_key: str = ""
-    dune_api_key: str = ""
-    lunarcrush_api_key: str = ""
-    lunarcrush_bearer_token: str = ""
-    deribit_api_key: str = ""
-    x_api_key: str = ""
-    x_api_secret: str = ""
-    x_bearer_token: str = ""
-    merlin_api_key: str = ""
-    merlin_user_address: str = ""
+    coingecko_api_key: str = field(init=False)
+    dune_api_key: str = field(init=False)
+    lunarcrush_api_key: str = field(init=False)
+    lunarcrush_bearer_token: str = field(init=False)
+    deribit_api_key: str = field(init=False)
+    x_api_key: str = field(init=False)
+    x_api_secret: str = field(init=False)
+    x_bearer_token: str = field(init=False)
+    merlin_api_key: str = field(init=False)
+    merlin_user_address: str = field(init=False)
     
     # Dune Analytics queries
     dune_queries: Optional[Dict[str, int]] = None
-    
+
     # FRED series mappings  
     fred_series: Optional[Dict[str, str]] = None
-    
+
     # File paths
-    dune_csv_path: str = "OutputData/Dune_Metrics.csv"
-    
     def __post_init__(self):
         # Load API keys from environment variables
         self.coingecko_api_key = os.getenv('COINGECKO_API_KEY', '')
@@ -205,37 +205,9 @@ class APIConfig:
                 "query_21": 5891691
             }
 
-# Dune Query Details:
-#  All available on my dune dashboards: 
-# Daily Frequency:https://dune.com/amaliohidalgo_team_4477/crypto-market-volatility-forecast-indicators-daily
-# query_01 (5893929): cum_deposited_eth - Measures total ETH staked over time, indicating network participation.
-# query_02 (5893461): economic_security - Assesses the financial security of the Ethereum network by valuing staked ETH in USD.
-# query_03 (5893557): btc_etf_flows - Monitors Bitcoin ETF inflows/outflows, reflecting institutional sentiment.
-# query_04 (5893307): eth_etf_flows - Monitors Ethereum ETF inflows/outflows, reflecting institutional sentiment.
-# query_05 (5894092): total_defi_users - Counts unique users interacting with DeFi protocols, indicating ecosystem growth.
-# query_06 (5894035): median_gas - Measures median gas prices on Ethereum, reflecting network congestion and user costs.
-# query_07 (5893555): staked_eth_category - Analyzes staked ETH distribution across different categories.
-# query_08 (5893552): lsd_share - Tracks liquid staking derivatives market share and distribution.
-# query_09 (5893566): lsd_tvl - Monitors total value locked in liquid staking derivative protocols.
-# query_10 (5893781): staking_rewards - Tracks staking rewards and yield metrics for validators.
-# query_11 (5893821): validator_performance - Monitors validator performance metrics and attestation rates.
-# query_12 (5893009): network_activity - Measures daily active addresses and transaction metrics.
-# query_13 (5892998): defi_tvl - Tracks total value locked across DeFi protocols on Ethereum.
-# query_14 (5893911): nft_volume - Monitors NFT trading volume and market activity metrics.
-# query_15 (5892742): bridge_activity - Tracks cross-chain bridge volumes and activity.
-# query_16 (5892720): mev_activity - Monitors MEV (Maximal Extractable Value) metrics and trends.
-# query_17 (5891651): lending_metrics - Tracks lending protocol metrics including borrow/supply rates.
-# query_18 (5892696): derivative_volume - Monitors on-chain derivatives trading volume.
-# query_19 (5892424): governance_activity - Tracks DAO governance participation and voting metrics.
-# query_20 (5892227): yield_farming - Monitors yield farming rewards and liquidity mining metrics.
-# query_21 (5891691): perpetual_volume - Tracks perpetual futures trading volume on-chain.
-# 
-# Hourly Frequency: **Coming Soon**
-
         if self.fred_series is None:
             self.fred_series = {
                 "VIXCLS": "vix_equity_vol",
-                "MOVE": "move_bond_vol",
                 "OVXCLS": "ovx_oil_vol",
                 "GVZCLS": "gvz_gold_vol",
                 "DTWEXBGS": "usd_trade_weighted_index",
@@ -243,7 +215,6 @@ class APIConfig:
                 "DGS10": "us_10y_treasury_yield",
             }
 # VIXCLS: CBOE Volatility Index, measures market's expectation of 30-day volatility for S&P 500.
-# MOVE: Merrill Lynch Option Volatility Estimate, indicates expected volatility in the bond market.
 # OVXCLS: CBOE Crude Oil Volatility Index, reflects market's expectation of 30-day volatility for crude oil.
 # GVZCLS: CBOE Gold Volatility Index, indicates market's expectation of 30-day volatility for gold.
 # DTWEXBGS: Trade Weighted U.S. Dollar Index, measures the value of USD against a basket of foreign currencies.
@@ -271,8 +242,16 @@ class Config:
         self.today = dt.date.today().strftime('%Y-%m-%d')
 
 
-def create_default_config() -> Config:
-    """Create default configuration matching LatestNotebook.ipynb."""
+def load_config() -> Config:
+    """
+    Load configuration with default values and environment variables.
+    
+    Creates a configuration object with sensible defaults for all settings
+    and automatically loads API keys from environment variables.
+    
+    Returns:
+        Config: Configuration object ready for use
+    """
     return Config(
         data=DataConfig(),
         tsfresh=TSFreshConfig(),
@@ -305,7 +284,7 @@ def load_config_from_file(config_path: str = "config.json") -> Config:
     """
     if not os.path.exists(config_path):
         print(f"Config file {config_path} not found. Using defaults.")
-        return create_default_config()
+        return load_config()
     
     try:
         with open(config_path, 'r') as f:
@@ -314,7 +293,7 @@ def load_config_from_file(config_path: str = "config.json") -> Config:
     except Exception as e:
         print(f"Error loading config from {config_path}: {e}")
         print("Using default configuration.")
-        return create_default_config()
+        return load_config()
 
 
 def save_config_to_file(config: Config, config_path: str = "config.json") -> None:
@@ -362,8 +341,7 @@ def save_config_to_file(config: Config, config_path: str = "config.json") -> Non
             },
             'api': {
                 'dune_queries': config.api.dune_queries,
-                'fred_series': config.api.fred_series,
-                'dune_csv_path': config.api.dune_csv_path
+                'fred_series': config.api.fred_series
             }
         }
         
@@ -433,17 +411,16 @@ def print_config_summary(config: Config) -> None:
         print(f"   {api.upper()}: {status}")
 
 
-# Convenience function
-def get_default_config() -> Config:
-    """Get default configuration for quick testing."""
-    return create_default_config()
+# Backward compatibility aliases
+create_default_config = load_config  # Deprecated: use load_config() instead
+get_default_config = load_config     # Deprecated: use load_config() instead
 
 
 if __name__ == "__main__":
     # Test configuration
     print("Testing configuration module...")
     
-    config = create_default_config()
+    config = load_config()
     print_config_summary(config)
     
     # Test saving and loading

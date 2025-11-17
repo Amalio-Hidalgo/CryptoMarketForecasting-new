@@ -47,7 +47,6 @@
       "DTWEXBGS": "usd_trade_weighted_index",
       "DGS2": "us_2y_treasury_yield",
       "DGS10": "us_10y_treasury_yield"
-    },
-    "dune_csv_path": "OutputData/Dune_Metrics.csv"
+    }
   }
 }

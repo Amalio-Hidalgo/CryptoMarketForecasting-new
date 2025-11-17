@@ -62,25 +62,25 @@ def test_collectors_structure():
         with open(collectors_path, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # Check for key safety features
-        safety_checks = [
-            'allow_dune_execution: bool = False',  # Default safety
-            'collect_crypto_data_with_cached_dune',  # Safe function
-            'collect_crypto_data_with_fresh_dune',   # Explicit credit function
-            'DUNE_API_KEY_2',  # Correct API key
-            'cached_only'      # Safe strategy
+        # Check for key classes and methods
+        required_elements = [
+            'class CryptoDataCollector',           # Main class
+            'use_cached_dune_only',                # Safety parameter
+            'def collect_all_data',                # Batch collection method
+            'def combine_data_sources',            # Data merger
+            'def get_dune_data',                   # Dune interface
         ]
         
-        missing_features = []
-        for check in safety_checks:
-            if check not in content:
-                missing_features.append(check)
+        missing_elements = []
+        for element in required_elements:
+            if element not in content:
+                missing_elements.append(element)
         
-        if missing_features:
-            print(f"❌ Missing safety features: {', '.join(missing_features)}")
+        if missing_elements:
+            print(f"❌ Missing required elements: {', '.join(missing_elements)}")
             return False
         else:
-            print("✅ All safety features present in collectors.py")
+            print("✅ All required elements present in collectors.py")
             return True
             
     except Exception as e:

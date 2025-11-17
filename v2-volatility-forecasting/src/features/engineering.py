@@ -159,15 +159,14 @@ class CryptoFeatureEngineer:
         Process a single Dask partition for time series rolling.
         
         Args:
-            df: DataFrame partition
+            df: DataFrame partition with columns: date, variable, value
             
         Returns:
-            Rolled time series DataFrame
+            Rolled time series DataFrame with id column
         """
         if len(df) == 0:
             return pd.DataFrame()
             
-        print(f"Processing partition with columns: {df.columns.tolist()}")
         df = df.copy()
         df['date'] = pd.to_datetime(df['date'])
         
@@ -183,7 +182,9 @@ class CryptoFeatureEngineer:
             )
             return rolled
         except Exception as e:
-            print(f"Error in rolling: {e}")
+            print(f"❌ Error in rolling partition: {e}")
+            import traceback
+            traceback.print_exc()
             return pd.DataFrame()
 
     def extract_dask_partition(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -200,8 +201,6 @@ class CryptoFeatureEngineer:
         if len(df) == 0:
             return pd.DataFrame()
             
-        print(f"Extracting features for partition with columns: {df.columns.tolist()}")
-        
         try:
             features = extract_features(
                 df,
@@ -214,7 +213,9 @@ class CryptoFeatureEngineer:
             )
             return features
         except Exception as e:
-            print(f"Error in feature extraction: {e}")
+            print(f"❌ Error in feature extraction: {e}")
+            import traceback
+            traceback.print_exc()
             return pd.DataFrame()
 
     def select_dask_partition(self, df: pd.DataFrame, y: pd.Series) -> pd.DataFrame:
@@ -243,7 +244,9 @@ class CryptoFeatureEngineer:
             )
             return features
         except Exception as e:
-            print(f"Error in feature selection: {e}")
+            print(f"❌ Error in feature selection: {e}")
+            import traceback
+            traceback.print_exc()
             return pd.DataFrame()
 
     def prepare_target_variable(self, 
@@ -350,63 +353,76 @@ class CryptoFeatureEngineer:
         """
         print("Starting TSFresh + Dask pipeline...")
         
-        # Create Dask feature container
-        FC_dask = self.create_dask_feature_container(X, n_partitions)
-        
-        # Test rolling on one partition for metadata
-        print("Testing rolling operation...")
-        df_test = FC_dask.partitions[0].compute()
-        df_test['date'] = pd.to_datetime(df_test['date'])
-        rolled_test = roll_time_series(
-            df_test,
-            column_id='variable',
-            column_sort='date',
-            max_timeshift=self.time_window,
-        )
-        
-        # Rolling - No persist (fast operation)
-        print("🔄 Rolling time series...")
-        rolled_dask = FC_dask.map_partitions(
-            self.roll_dask_partition, 
-            meta=rolled_test
-        ).persist()
-        
-        # Feature extraction - Persist (expensive step)
-        print("Extracting features...")
-        features_dask = rolled_dask.map_partitions(
-            self.extract_dask_partition, 
-            enforce_metadata=False
-        ).persist()
-        
-        # Feature selection - Compute directly (result)
-        print("🎯 Selecting features...")
-        selected_dask = features_dask.map_partitions(
-            self.select_dask_partition, 
-            y=y, 
-            enforce_metadata=False
-        ).persist()
-        
-        # Materialize and join results
-        print("🔗 Materializing results...")
-        out = None
-        selected_futures = client.compute(selected_dask.to_delayed())
-        
-        for i, future in enumerate(selected_futures):
-            try:
-                df = future.result()
-                if len(df) > 0:
-                    if out is None:
-                        out = df
-                    else:
-                        out = out.join(df, how='outer')
-            except Exception as e:
-                print(f"Error processing partition {i}: {e}")
-                continue
-        
-        if out is not None:
-            print(f"✅ TSFresh pipeline completed. Features shape: {out.shape}")
-        else:
-            print("⚠️ No features extracted from TSFresh pipeline")
+        try:
+            # Create Dask feature container
+            FC_dask = self.create_dask_feature_container(X, n_partitions)
+            
+            # Test rolling on one partition for metadata
+            print("🧪 Testing rolling operation...")
+            df_test = FC_dask.partitions[0].compute()
+            df_test['date'] = pd.to_datetime(df_test['date'])
+            rolled_test = roll_time_series(
+                df_test,
+                column_id='variable',
+                column_sort='date',
+                max_timeshift=self.time_window,
+                min_timeshift=1,
+                rolling_direction=1,
+                n_jobs=1
+            )
+            
+            print(f"   ✅ Test rolling successful!")
+            
+            # Rolling - persist
+            print("🔄 Rolling time series...")
+            rolled_dask = FC_dask.map_partitions(
+                self.roll_dask_partition, 
+                meta=rolled_test
+            ).persist()
+            
+            # Feature extraction - persist
+            print("⚙️  Extracting TSFresh features...")
+            features_dask = rolled_dask.map_partitions(
+                self.extract_dask_partition, 
+                enforce_metadata=False
+            ).persist()
+            
+            # Feature selection - persist
+            print("🎯 Selecting significant features...")
+            selected_dask = features_dask.map_partitions(
+                self.select_dask_partition, 
+                y=y, 
+                enforce_metadata=False
+            ).persist()
+            
+            # Materialize and join results
+            print("🔗 Materializing results...")
+            out = None
+            selected_futures = client.compute(selected_dask.to_delayed())
+            
+            for i, future in enumerate(selected_futures):
+                try:
+                    df = future.result()
+                    if len(df) > 0:
+                        print(f"   ✅ Partition {i}: {df.shape[1]} features")
+                        if out is None:
+                            out = df
+                        else:
+                            out = out.join(df, how='outer')
+                except Exception as e:
+                    print(f"   ⚠️  Partition {i} failed: {e}")
+                    continue
+            
+            if out is not None and len(out) > 0:
+                print(f"✅ TSFresh pipeline completed. Features shape: {out.shape}")
+            else:
+                print("⚠️  No features extracted from TSFresh pipeline")
+                out = pd.DataFrame()
+                
+        except Exception as e:
+            print(f"❌ TSFresh pipeline failed: {e}")
+            import traceback
+            traceback.print_exc()
             out = pd.DataFrame()
             
         return out

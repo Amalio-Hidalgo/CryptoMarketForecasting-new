@@ -69,153 +69,169 @@ class CryptoDataCollector:
     data quality validation across all supported data sources.
     
     Attributes:
-        TIMEZONE (str): Target timezone for data alignment
-        TOP_N (int): Number of top cryptocurrencies to collect
-        LOOKBACK_DAYS (int): Historical data window in days
-        FREQUENCY (str): Data frequency ("1D" for daily, "1H" for hourly)
-        DUNE_QUERIES (dict): Mapping of Dune query IDs to descriptive names
-        FRED_KNOWN (dict): Mapping of FRED series IDs to descriptive names
+        timezone (str): Target timezone for data alignment
+        top_n (int): Number of top cryptocurrencies to collect
+        lookback_days (int): Historical data window in days
+        frequency (str): Data frequency ("1D" for daily, "1H" for hourly)
+        dune_queries (dict): Mapping of Dune query IDs to descriptive names
+        fred_series (dict): Mapping of FRED series IDs to descriptive names
     """
     
-    def __init__(self, 
-                 timezone: str = "Europe/Madrid",
-                 top_n: int = 10,
-                 lookback_days: int = 365,
-                 frequency: str = "1D",
-                 use_cached_dune_only: bool = True):
+    @staticmethod
+    def _normalize_frequency(freq: str) -> str:
         """
-        Initialize the cryptocurrency data collector.
-        
-        Sets up API connections, configures collection parameters, and initializes
-        data source mappings. All timestamps will be aligned to the specified timezone.
+        Normalize frequency string to standard format.
         
         Args:
-            timezone (str): Target timezone for data alignment (e.g., "UTC", "Europe/Madrid")
-            top_n (int): Number of top cryptocurrencies by market cap to collect
-            lookback_days (int): Number of days of historical data to retrieve
-            frequency (str): Data collection frequency - "1D" for daily, "1H" for hourly
-            use_cached_dune_only (bool): True=use cached data only, False=allow fresh execution
-                                       (False may consume API credits)
-        
-        Raises:
-            EnvironmentError: If required API keys are not found in environment variables
+            freq: Input frequency (e.g., "1H", "hourly", "1D", "daily")
             
-        Note:
-            Requires the following environment variables:
-            - COINGECKO_API_KEY: For CoinGecko API access
-            - DUNE_API_KEY: For Dune Analytics API access  
-            - FRED_API_KEY: For Federal Reserve Economic Data API access
+        Returns:
+            Standardized frequency: "1H" for hourly, "1D" for daily
         """
-        self.TIMEZONE = timezone
-        self.TOP_N = top_n
-        self.LOOKBACK_DAYS = lookback_days
-        self.START_DATE = (dt.datetime.now() - dt.timedelta(days=lookback_days)).strftime("%Y-%m-%d")
-        self.TODAY = dt.date.today().strftime('%Y-%m-%d')
+        freq_lower = freq.lower().strip()
         
-        # API Keys from environment
-        self.COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY")
-        self.DUNE_API_KEY = os.getenv("DUNE_API_KEY")  # Using DUNE_API_KEY_2
-        self.FRED_API_KEY = os.getenv("FRED_API_KEY")
-        
-        # Frequency configuration for batch sizing and resampling
-        self.FREQUENCY = frequency if frequency else "1D"
-        
-        # Dune configuration - simplified approach
-        self.USE_CACHED_DUNE_ONLY = use_cached_dune_only
-        
-        # Dune Analytics query configuration (21 curated on-chain metrics)
-        # Maps query IDs to descriptive names for better data interpretation
-        self.DUNE_QUERIES = {
-            5893929: "cum_deposited_eth",
-            5893461: "economic_security", 
-            5893557: "btc_etf_flows",
-            5893307: "eth_etf_flows", 
-            5894092: "total_defi_users",
-            5894035: "median_gas",
-            5893555: "staked_eth_category",
-            5893552: "lsd_share",
-            5893566: "lsd_tvl",
-            5893781: "staking_rewards",
-            5893821: "validator_performance",
-            5893009: "network_activity",
-            5892998: "defi_tvl",
-            5893911: "nft_volume",
-            5892742: "bridge_activity",
-            5892720: "mev_activity",
-            5891651: "lending_metrics",
-            5892696: "derivative_volume",
-            5892424: "governance_activity",
-            5892227: "yield_farming",
-            5891691: "perpetual_volume"
-        }
-        
-        # FRED macroeconomic indicators configuration
-        # Maps FRED series IDs to descriptive names for volatility forecasting
-        self.FRED_KNOWN = {
-            "VIXCLS": "vix_equity_vol",         # CBOE Volatility Index
-            "MOVE": "move_bond_vol",            # ICE BofAML MOVE Index  
-            "OVXCLS": "ovx_oil_vol",           # CBOE Crude Oil ETF Volatility Index
-            "GVZCLS": "gvz_gold_vol",          # CBOE Gold ETF Volatility Index
-            "DTWEXBGS": "usd_trade_weighted_index",  # Trade Weighted U.S. Dollar Index
-            "DGS2": "us_2y_treasury_yield",    # 2-Year Treasury Constant Maturity Rate
-            "DGS10": "us_10y_treasury_yield",  # 10-Year Treasury Constant Maturity Rate
-        }
-
-    def get_pandas_freq(self) -> str:
-        """Convert internal frequency format to pandas resample format."""
-        if self.FREQUENCY in ["1H", "1h", "hourly"]:
-            return "H"
-        else:
-            return "D"
-    
-    def get_binance_interval(self) -> str:
-        """Convert internal frequency format to Binance interval format."""
-        if self.FREQUENCY in ["1H", "1h", "hourly"]:
-            return "1h"
-        else:
-            return "1d"
-    
-    def get_deribit_resolution(self) -> str:
-        """Convert internal frequency format to Deribit resolution format."""
-        if self.FREQUENCY in ["1H", "1h", "hourly"]:
+        # Hourly patterns
+        if freq_lower in ["1h", "h", "hourly", "hour", "1hour"]:
             return "1H"
+        # Daily patterns  
+        elif freq_lower in ["1d", "d", "daily", "day", "1day"]:
+            return "1D"
         else:
+            # Default to daily for unknown
+            print(f"⚠️ Unknown frequency '{freq}', defaulting to daily (1D)")
             return "1D"
     
-    def get_fred_frequency(self) -> str:
-        """Convert internal frequency format to FRED frequency format."""
-        if self.FREQUENCY in ["1H", "1h", "hourly"]:
-            return "Daily (resampled to hourly)"
-        else:
-            return "Daily"
+    def __init__(self, 
+                 config = None,
+                 timezone: Optional[str] = None,
+                 top_n: Optional[int] = None,
+                 lookback_days: Optional[int] = None,
+                 frequency: Optional[str] = None,
+                 use_cached_dune_only: Optional[bool] = None):
+        """
+        Initialize the cryptocurrency data collector with centralized configuration.
+        
+        Args:
+            config: Config object from config.py (if None, creates default)
+            timezone (str): Override timezone (if None, uses config default)
+            top_n (int): Override number of top cryptos (if None, uses config default)
+            lookback_days (int): Override historical window (if None, uses config default)
+            frequency (str): Override data frequency (if None, uses config default)
+            use_cached_dune_only (bool): Override Dune caching (if None, uses config default)
+        
+        Note:
+            - Parameters override config values if provided
+            - Uses centralized config.py for all constants and API settings
+            - Follows proper Python naming conventions (lowercase instance variables)
+        """
+        # Import and setup centralized configuration
+        from config import load_config, APIConfig
+        
+        # Use provided config or create default
+        if config is None:
+            config = load_config()
+        
+        # Apply parameter overrides or use config defaults
+        self.timezone = timezone or config.data.timezone
+        self.top_n = top_n or config.data.top_n
+        self.lookback_days = lookback_days or config.data.lookback_days
+        
+        # Normalize and validate frequency
+        raw_frequency = frequency or config.data.frequency
+        self.frequency = self._normalize_frequency(raw_frequency)
+        
+        self.use_cached_dune_only = use_cached_dune_only if use_cached_dune_only is not None else True
+        
+        # Frequency warnings for data sources
+        if self.supports_hourly():
+            print(f"⚠️ Hourly frequency selected - Note:")
+            print(f"   • CoinGecko: Limited to last 90 days for hourly data")
+            print(f"   • FRED: Only daily data available (will be resampled)")
+            print(f"   • Dune: Mostly daily data (hourly limited)")
+        
+        # Calculate derived values
+        self.start_date = (dt.datetime.now() - dt.timedelta(days=self.lookback_days)).strftime("%Y-%m-%d")
+        self.today = dt.date.today().strftime('%Y-%m-%d')
+        
+        # API Configuration from centralized config
+        api_config = APIConfig()
+        self.api_keys = {
+            'coingecko': os.getenv("COINGECKO_API_KEY"),
+            'dune': os.getenv("DUNE_API_KEY"),
+            'fred': os.getenv("FRED_API_KEY")
+        }
+        
+        # Import all constants from centralized config (no more duplication!)
+        self.dune_queries = api_config.dune_queries
+        self.fred_series = api_config.fred_series
+        
+        # Store full config for advanced usage
+        self.config = config
+
+    # =============================================================================
+    # FREQUENCY CONVERSION METHODS
+    # =============================================================================
     
-    def get_dune_resolution(self) -> str:
-        """Convert internal frequency format to Dune resolution format."""
-        if self.FREQUENCY in ["1H", "1h", "hourly"]:
-            return "Hourly (when available)"
-        else:
-            return "Daily"
+    def get_pandas_freq(self) -> str:
+        """
+        Convert to pandas resample frequency.
+        
+        Returns:
+            "H" for hourly, "D" for daily
+        """
+        return "H" if self.frequency == "1H" else "D"
     
-    # Keep private methods for backward compatibility
-    def _get_pandas_freq(self) -> str:
-        """DEPRECATED: Use get_pandas_freq() instead."""
-        return self.get_pandas_freq()
+    def get_binance_interval(self) -> str:
+        """
+        Convert to Binance API interval format.
+        
+        Binance supports: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+        
+        Returns:
+            "1h" for hourly, "1d" for daily
+        """
+        return "1h" if self.frequency == "1H" else "1d"
     
-    def _get_binance_interval(self) -> str:
-        """DEPRECATED: Use get_binance_interval() instead."""
-        return self.get_binance_interval()
+    def get_deribit_resolution(self) -> str:
+        """
+        Convert to Deribit API resolution format.
+        
+        Deribit DVOL supports: 1, 60, 1D
+        (1 = 1 minute, 60 = 1 hour, 1D = 1 day)
+        
+        Returns:
+            "60" for hourly, "1D" for daily
+        """
+        return "60" if self.frequency == "1H" else "1D"
     
-    def _get_deribit_resolution(self) -> str:
-        """DEPRECATED: Use get_deribit_resolution() instead."""
-        return self.get_deribit_resolution()
+    def get_coingecko_interval(self) -> str:
+        """
+        Convert to CoinGecko API interval format.
+        
+        CoinGecko supports: daily, hourly (but hourly only for last 90 days)
+        
+        Returns:
+            "hourly" or "daily"
+        """
+        return "hourly" if self.frequency == "1H" else "daily"
     
-    def _get_fred_frequency(self) -> str:
-        """DEPRECATED: Use get_fred_frequency() instead."""
-        return self.get_fred_frequency()
+    def supports_hourly(self) -> bool:
+        """
+        Check if current frequency is hourly.
+        
+        Returns:
+            True if hourly, False if daily
+        """
+        return self.frequency == "1H"
     
-    def _get_dune_resolution(self) -> str:
-        """DEPRECATED: Use get_dune_resolution() instead."""
-        return self.get_dune_resolution()
+    def get_frequency_description(self) -> str:
+        """
+        Get human-readable frequency description.
+        
+        Returns:
+            Descriptive string for logging
+        """
+        return "Hourly (1H)" if self.frequency == "1H" else "Daily (1D)"
 
     # =============================================================================
     # COINGECKO API DATA COLLECTION
@@ -237,8 +253,10 @@ class CryptoDataCollector:
             Array of identifiers or dictionary containing both formats
         """
         if n is None:
-            n = self.TOP_N
-        if self.COINGECKO_API_KEY is None:
+            n = self.top_n
+        
+        coingecko_key = self.api_keys.get('coingecko')
+        if coingecko_key is None:
             print("No CoinGecko API Key Available")
             if output_format == "both":
                 return {"ids": [], "ticker": []}
@@ -247,7 +265,7 @@ class CryptoDataCollector:
             
         cg_headers = {
             "accept": "application/json",
-            "x_cg_demo_api_key": self.COINGECKO_API_KEY
+            "x_cg_demo_api_key": coingecko_key
         }
         url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc"
         
@@ -282,16 +300,17 @@ class CryptoDataCollector:
         Only works up to past 365 days, loses intraday data if > 90 days due to API limits.
         """
         if start is None:
-            start = self.START_DATE
+            start = self.start_date
         if freq is None:
             freq = self.get_pandas_freq()
             
         end_timestamp = int(dt.datetime.now().timestamp()) * 1000
         start_timestamp = int(pd.to_datetime(start).timestamp()) * 1000
         
+        coingecko_key = self.api_keys.get('coingecko')
         cg_headers = {
             "accept": "application/json",
-            "x_cg_demo_api_key": self.COINGECKO_API_KEY
+            "x_cg_demo_api_key": coingecko_key
         }
         
         outbig = None
@@ -305,7 +324,7 @@ class CryptoDataCollector:
                 
                 outsmall = None
                 for column in js:
-                    timestamps = pd.to_datetime([x[0] for x in js[column]], unit='ms').tz_localize(self.TIMEZONE)
+                    timestamps = pd.to_datetime([x[0] for x in js[column]], unit='ms').tz_localize(self.timezone)
                     values = [x[1] for x in js[column]]
                     if outsmall is None:
                         outsmall = pd.DataFrame(data=values, columns=[(column+'_'+c)], index=timestamps)
@@ -350,13 +369,13 @@ class CryptoDataCollector:
         Gets extended OHLCV data from Binance using pagination to overcome the 1000 candle limit.
         """
         if max_days is None:
-            max_days = self.LOOKBACK_DAYS
+            max_days = self.lookback_days
         if interval is None:
             interval = self.get_binance_interval()
             
         outbig = None
         if ids is None or tickers is None:
-            data = self.coingecko_get_universe(n=self.TOP_N, output_format="both")
+            data = self.coingecko_get_universe(n=self.top_n, output_format="both")
             ids, tickers = data["ids"], data["ticker"]
             
         successful_coins = []
@@ -418,7 +437,7 @@ class CryptoDataCollector:
                 df[col + '_' + id.lower()] = df[col]
                 
             df['date'] = pd.to_datetime(df['timestamp'], unit='ms', errors='coerce', utc=True)
-            df = df.set_index('date').tz_convert(self.TIMEZONE)
+            df = df.set_index('date').tz_convert(self.timezone)
             
             symbol_cols = [f"{col}_{id}" for col in ['open', 'high', 'low', 'close', 'volume']]
             df = df[symbol_cols]
@@ -450,7 +469,7 @@ class CryptoDataCollector:
                          resolution: Optional[str] = None) -> pd.DataFrame:
         """Get DVOL data from Deribit."""
         if days is None:
-            days = self.LOOKBACK_DAYS
+            days = self.lookback_days
         if resolution is None:
             resolution = self.get_deribit_resolution()
             
@@ -475,7 +494,7 @@ class CryptoDataCollector:
                 d = pd.DataFrame(data, columns=["t", "open", "high", "low", "dvol"])
                 d["t"] = pd.to_datetime(d["t"], unit="ms")
                 df = d.set_index("t")[["dvol"]].rename(columns={"dvol": f"dvol_{cur.lower()}"})
-                df.index = df.index.tz_localize(self.TIMEZONE)
+                df.index = df.index.tz_localize(self.timezone)
                 # Use frequency-aware resampling
                 df = df.resample(self.get_pandas_freq()).last().dropna(how="any")
                 df.index.name = "date"
@@ -499,16 +518,32 @@ class CryptoDataCollector:
     def fred_get_series(self, 
                         series_ids: Optional[Dict[str, str]] = None,
                         start: Optional[str] = None) -> pd.DataFrame:
-        """Get macroeconomic data from FRED."""
-        if series_ids is None:
-            series_ids = self.FRED_KNOWN
-        if start is None:
-            start = self.START_DATE
+        """
+        Get macroeconomic data from FRED.
+        
+        Note: FRED only provides daily data. If hourly frequency is requested,
+        the data will be forward-filled to match the frequency.
+        
+        Args:
+            series_ids: Dict mapping FRED series IDs to column names
+            start: Start date for data collection
             
-        key = self.FRED_API_KEY
+        Returns:
+            DataFrame with FRED economic indicators
+        """
+        if series_ids is None:
+            series_ids = self.fred_series
+        if start is None:
+            start = self.start_date
+            
+        key = self.api_keys.get('fred')
         if not key:
-            print("No FRED API Key Available")
+            print("⚠️ No FRED API Key Available")
             return pd.DataFrame()
+        
+        # Warn if hourly requested (FRED only has daily)
+        if self.supports_hourly():
+            print("ℹ️  FRED provides daily data only - will forward-fill for hourly frequency")
             
         base = "https://api.stlouisfed.org/fred/series/observations"
         df = None
@@ -523,7 +558,7 @@ class CryptoDataCollector:
                 }).json()
                 
                 obs = pd.DataFrame(js['observations'])
-                index = pd.DatetimeIndex(obs['date'], freq='infer', tz=self.TIMEZONE)
+                index = pd.DatetimeIndex(obs['date'], freq='infer', tz=self.timezone)
                 obs = obs.set_index(index)['value'].rename(series_ids[sid])
                 obs = pd.to_numeric(obs, errors='coerce')
                 
@@ -535,12 +570,18 @@ class CryptoDataCollector:
                 time.sleep(2)
                 
             except Exception as e:
-                print(f"Error fetching {series_ids[sid]}: {e}")
+                print(f"⚠️ Error fetching {series_ids[sid]}: {e}")
                 continue
-                
-        # Use frequency-aware resampling
-        if df is not None:
-            return df.asfreq(self.get_pandas_freq(), method='ffill')
+        
+        # Resample to target frequency
+        if df is not None and not df.empty:
+            target_freq = self.get_pandas_freq()
+            if target_freq == "H":
+                # Forward fill daily data to hourly
+                df = df.resample('H').ffill()
+            # For daily, keep as-is (already daily)
+            return df
+            
         return pd.DataFrame()
 
     # =============================================================================
@@ -566,39 +607,67 @@ class CryptoDataCollector:
             saved to 'OutputData/dune_data.csv' for offline analysis.
         """
         try:
-            from dune_client.client import DuneClient
-            from dune_client.query import QueryBase
+            import requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
             
-            if not self.DUNE_API_KEY:
+            if not self.api_keys['dune']:
                 print("❌ No Dune API key available")
                 return pd.DataFrame()
             
-            dune = DuneClient(self.DUNE_API_KEY)
+            # Create custom session to avoid gzip decompression errors
+            session = requests.Session()
+            session.headers.update({'Accept-Encoding': 'identity'})  # Disable gzip
+            
+            # Add retry strategy for robustness
+            retry = Retry(
+                total=3,
+                backoff_factor=1,
+                status_forcelist=[429, 500, 502, 503, 504]
+            )
+            adapter = HTTPAdapter(max_retries=retry)
+            session.mount("http://", adapter)
+            session.mount("https://", adapter)
+            
             results = {}
             dune_data = None
-            query_ids = list(self.DUNE_QUERIES.keys())
+            # Config has query_name: query_id structure, so we need to swap
+            query_mapping = {v: k for k, v in self.dune_queries.items()}  # {query_id: query_name}
+            query_ids = list(query_mapping.keys())
             successful_count = 0
             failed_queries = []
             
             print(f"🔄 Processing {len(query_ids)} Dune queries...")
             
             for i, qid in enumerate(query_ids, 1):
-                query = QueryBase(query_id=qid)
-                query_name = self.DUNE_QUERIES[qid]
+                query_name = query_mapping[qid]
                 
                 try: 
                     print(f"   📊 Query {i}/{len(query_ids)}: {query_name} (ID: {qid})")
-                    response = dune.get_latest_result_dataframe(query)
                     
-                    if response is None or response.empty:
+                    # Use direct REST API to avoid SDK gzip issues
+                    url = f"https://api.dune.com/api/v1/query/{qid}/results"
+                    headers = {"X-Dune-API-Key": self.api_keys['dune']}
+                    
+                    response = session.get(url, headers=headers, timeout=30)
+                    response.raise_for_status()
+                    
+                    data = response.json()
+                    
+                    if 'result' not in data or 'rows' not in data['result']:
+                        print(f"   ⚠️  Unexpected response format for {query_name}")
+                        failed_queries.append(f"{query_name} (bad format)")
+                        continue
+                    
+                    df = pd.DataFrame(data['result']['rows'])
+                    
+                    if df.empty:
                         print(f"   ⚠️  Empty response for {query_name}")
                         failed_queries.append(f"{query_name} (empty)")
                         continue
                         
-                    results[query_name] = response
-                    df = response.copy()
+                    results[query_name] = df
                     # Enhanced date detection with proper timezone handling
-                    query_name = self.DUNE_QUERIES[qid]
                     date_column_found = False
                     
                     for column in df.columns:
@@ -608,9 +677,9 @@ class CryptoDataCollector:
                                 df[column] = pd.to_datetime(df[column], utc=True)
                                 # Convert to target timezone and then to date for consistency
                                 if df[column].dt.tz is not None:
-                                    df[column] = df[column].dt.tz_convert(self.TIMEZONE)
+                                    df[column] = df[column].dt.tz_convert(self.timezone)
                                 else:
-                                    df[column] = df[column].dt.tz_localize(self.TIMEZONE)
+                                    df[column] = df[column].dt.tz_localize(self.timezone)
                                 # Convert to date-only for consistent joining
                                 df[column] = df[column].dt.date
                                 df = df.rename(columns={column: 'date'})
@@ -694,22 +763,77 @@ class CryptoDataCollector:
             from dune_client.client import DuneClient
             from dune_client.query import QueryBase
             
-            if not self.DUNE_API_KEY:
+            dune_key = self.api_keys.get('dune')
+            if not dune_key:
                 print("❌ No Dune API key available")
                 return pd.DataFrame()
             
-            dune = DuneClient(self.DUNE_API_KEY)
-            dune_data = None
-            query_ids = list(self.DUNE_QUERIES.keys())
+            # Create custom session to avoid gzip decompression errors
+            import requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
             
-            for qid in query_ids:
-                query = QueryBase(query_id=qid)
-                try: 
-                    response = dune.get_execution_results_csv(query)
-                    df = pd.DataFrame(response)
+            session = requests.Session()
+            session.headers.update({'Accept-Encoding': 'identity'})  # Disable gzip
+            
+            retry = Retry(
+                total=3,
+                backoff_factor=1,
+                status_forcelist=[429, 500, 502, 503, 504]
+            )
+            adapter = HTTPAdapter(max_retries=retry)
+            session.mount("http://", adapter)
+            session.mount("https://", adapter)
+            
+            dune_data = None
+            # Config has query_name: query_id structure, so we need to swap
+            query_mapping = {v: k for k, v in self.dune_queries.items()}  # {query_id: query_name}
+            query_ids = list(query_mapping.keys())
+            successful_count = 0
+            
+            print(f"🔄 Executing {len(query_ids)} Dune queries (uses API credits)...")
+            
+            for i, qid in enumerate(query_ids, 1):
+                query_name = query_mapping[qid]
+                try:
+                    print(f"   📊 Query {i}/{len(query_ids)}: {query_name} (ID: {qid})")
+                    
+                    # Use execute endpoint for fresh results
+                    url = f"https://api.dune.com/api/v1/query/{qid}/execute"
+                    headers = {"X-Dune-API-Key": dune_key}
+                    
+                    # Execute query
+                    exec_response = session.post(url, headers=headers, timeout=30)
+                    exec_response.raise_for_status()
+                    exec_data = exec_response.json()
+                    
+                    if 'execution_id' not in exec_data:
+                        print(f"   ⚠️  No execution ID returned for {query_name}")
+                        continue
+                    
+                    # Wait a bit for execution
+                    import time
+                    time.sleep(2)
+                    
+                    # Get results
+                    results_url = f"https://api.dune.com/api/v1/execution/{exec_data['execution_id']}/results"
+                    results_response = session.get(results_url, headers=headers, timeout=30)
+                    results_response.raise_for_status()
+                    
+                    data = results_response.json()
+                    
+                    if 'result' not in data or 'rows' not in data['result']:
+                        print(f"   ⚠️  Unexpected response format for {query_name}")
+                        continue
+                    
+                    df = pd.DataFrame(data['result']['rows'])
+                    
+                    if df.empty:
+                        print(f"   ⚠️  Empty response for {query_name}")
+                        continue
                     
                     # Enhanced date detection with proper timezone handling
-                    query_name = self.DUNE_QUERIES[qid]
+                    query_name = query_mapping[qid]
                     date_column_found = False
                     
                     for column in df.columns:
@@ -719,9 +843,9 @@ class CryptoDataCollector:
                                 df[column] = pd.to_datetime(df[column], utc=True)
                                 # Convert to target timezone and then to date for consistency
                                 if df[column].dt.tz is not None:
-                                    df[column] = df[column].dt.tz_convert(self.TIMEZONE)
+                                    df[column] = df[column].dt.tz_convert(self.timezone)
                                 else:
-                                    df[column] = df[column].dt.tz_localize(self.TIMEZONE)
+                                    df[column] = df[column].dt.tz_localize(self.timezone)
                                 # Convert to date-only for consistent joining
                                 df[column] = df[column].dt.date
                                 df = df.rename(columns={column: 'date'})
@@ -793,7 +917,7 @@ class CryptoDataCollector:
         
         # Try API first if key is available
         csv_data = pd.DataFrame()
-        if self.DUNE_API_KEY:
+        if self.api_keys['dune']:
             try:
                 if allow_execution:
                     data = self.get_dune_execution_results()
@@ -853,40 +977,6 @@ class CryptoDataCollector:
             print(f"⚠️  CSV loading failed: {str(e)[:50]}...")
             return pd.DataFrame()
 
-    def _save_dune_csv(self, df: pd.DataFrame, path: str) -> None:
-        """Save dataframe to CSV with directory creation."""
-        try:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            df.to_csv(path)
-            print(f"💾 Saved {len(df)} rows to {path}")
-        except Exception as e:
-            print(f"⚠️  CSV save failed: {e}")
-
-    def get_batch_size_for_frequency(self) -> int:
-        """Get appropriate batch size based on lookback period and frequency."""
-        if self.FREQUENCY in ["1H", "1h", "hourly"]:
-            return self.LOOKBACK_DAYS * 24  # Hours per day
-        else:
-            return self.LOOKBACK_DAYS  # Days
-
-    # Legacy method for backward compatibility
-    def dune_get_queries(self, query_ids: List[int], force_refresh: bool = False, 
-                        allow_execution: bool = False) -> pd.DataFrame:
-        """DEPRECATED: Use get_dune_data() instead."""
-        print("⚠️  dune_get_queries() is deprecated. Use get_dune_data() instead.")
-        
-        if force_refresh and allow_execution:
-            strategy = "execute_only"
-        # Simplified logic: choose method based on execution permission
-        try:
-            if force_refresh and allow_execution:
-                return self.get_dune_execution_results()
-            else:
-                return self.get_dune_latest_results()
-        except Exception as e:
-            print(f"⚠️ Dune data collection failed: {e}")
-            return pd.DataFrame()
-
     # =============================================================================
     # UNIFIED DATA COLLECTION METHODS
     # =============================================================================
@@ -896,7 +986,7 @@ class CryptoDataCollector:
         print("🔄 Starting data collection...")
         
         # Get universe
-        universe = self.coingecko_get_universe(self.TOP_N, output_format="both")
+        universe = self.coingecko_get_universe(self.top_n, output_format="both")
         if isinstance(universe, dict):
             ids, tickers = universe["ids"], universe["ticker"]
         else:
@@ -907,124 +997,66 @@ class CryptoDataCollector:
         
         # Collect price data silently
         data['binance_price'] = self.binance_get_price_action(ids=ids, tickers=tickers, 
-                                                              max_days=self.LOOKBACK_DAYS)
+                                                              max_days=self.lookback_days)
         
-        data['coingecko_price'] = self.coingecko_get_price_action(ids, start=self.START_DATE)
+        data['coingecko_price'] = self.coingecko_get_price_action(ids, start=self.start_date)
         
-        data['dvol'] = self.deribit_get_dvol(['BTC', 'ETH'], days=self.LOOKBACK_DAYS)
+        data['dvol'] = self.deribit_get_dvol(['BTC', 'ETH'], days=self.lookback_days)
         
-        data['onchain'] = self.get_dune_data(allow_execution=not self.USE_CACHED_DUNE_ONLY)
+        data['onchain'] = self.get_dune_data(allow_execution=not self.use_cached_dune_only)
         
-        data['macro'] = self.fred_get_series(series_ids=self.FRED_KNOWN, start=self.START_DATE)
+        data['macro'] = self.fred_get_series(series_ids=self.fred_series, start=self.start_date)
         
         print("✅ Data collection completed")
-        return data
-
-    def collect_all_data_with_cached_dune(self) -> Dict[str, pd.DataFrame]:
-        """Collect data from all sources using only cached Dune results (no credits consumed)."""
-        print("🔄 Starting data collection (cached Dune only)...")
-        
-        # Get universe
-        universe = self.coingecko_get_universe(self.TOP_N, output_format="both")
-        if isinstance(universe, dict):
-            ids, tickers = universe["ids"], universe["ticker"]
-        else:
-            print("❌ Failed to get universe data")
-            return {}
-        
-        data = {}
-        
-        # Collect price data silently
-        data['binance_price'] = self.binance_get_price_action(ids=ids, tickers=tickers, 
-                                                              max_days=self.LOOKBACK_DAYS)
-        
-        data['coingecko_price'] = self.coingecko_get_price_action(ids, start=self.START_DATE)
-        
-        data['dvol'] = self.deribit_get_dvol(['BTC', 'ETH'], days=self.LOOKBACK_DAYS)
-        
-        # Use cached-only strategy for Dune data
-        data['onchain'] = self.get_dune_data(allow_execution=False)
-        
-        data['macro'] = self.fred_get_series(series_ids=self.FRED_KNOWN, start=self.START_DATE)
-        
-        print("✅ Data collection completed (cached)")
         return data
 
     def combine_data_sources(self, data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         """Combine all data sources into unified DataFrame."""
         
+        if not data:
+            print("⚠️ No data sources provided")
+            return pd.DataFrame()
+        
         unified = None
+        successful = []
+        failed = []
+        
         for name, df in data.items():
-            if df.empty:
+            if df is None or df.empty:
+                failed.append(f"{name} (empty)")
                 continue
                 
             try:
                 # Standardize timezone
                 if df.index.tz is None:
-                    df.index = pd.DatetimeIndex(df.index).tz_localize(self.TIMEZONE).date
+                    df.index = pd.DatetimeIndex(df.index).tz_localize(self.timezone).date
                 else:
-                    df.index = pd.DatetimeIndex(df.index).tz_convert(self.TIMEZONE).date
+                    df.index = pd.DatetimeIndex(df.index).tz_convert(self.timezone).date
                     
                 if unified is None:
                     unified = df
                 else:
                     unified = unified.join(df, how='outer')
-                    
+                
+                successful.append(f"{name} ({len(df)} rows)")
+                unified.index = pd.to_datetime(unified.index)
             except Exception as e:
-                print(f"❌ Error combining {name}: {e}")
+                failed.append(f"{name} ({str(e)[:30]}...)")
                 continue
         
+        # Summary reporting
+        if successful:
+            print(f"✅ Combined {len(successful)} sources: {', '.join(successful)}")
+        if failed:
+            print(f"⚠️  Failed {len(failed)} sources: {', '.join(failed)}")
+        
         return unified if unified is not None else pd.DataFrame()
-
-
-# Convenience functions for quick access
-def collect_crypto_data(top_n: int = 10, 
-                       lookback_days: int = 365,
-                       timezone: str = "Europe/Madrid",
-                       frequency: str = "1D") -> pd.DataFrame:
-    """
-    Quick function to collect and combine all crypto data.
-    🔒 SAFE MODE: Uses cached data only - NO API credits consumed.
-    """
-    collector = CryptoDataCollector(timezone=timezone, top_n=top_n, 
-                                  lookback_days=lookback_days, frequency=frequency,
-                                  use_cached_dune_only=True)
-    data = collector.collect_all_data()
-    return collector.combine_data_sources(data)
-
-def collect_crypto_data_with_cached_dune(top_n: int = 10, 
-                                         lookback_days: int = 365,
-                                         timezone: str = "Europe/Madrid",
-                                         frequency: str = "1D") -> pd.DataFrame:
-    """
-    SAFE function to collect all crypto data including cached Dune results.
-    🔒 NO QUERY EXECUTION - uses only cached results, less API credits consumed.
-    """
-    collector = CryptoDataCollector(timezone=timezone, top_n=top_n, 
-                                  lookback_days=lookback_days, frequency=frequency)
-    data = collector.collect_all_data_with_cached_dune()
-    return collector.combine_data_sources(data)
-
-def collect_crypto_data_with_fresh_dune(top_n: int = 10, 
-                                        lookback_days: int = 365,
-                                        timezone: str = "Europe/Madrid",
-                                        frequency: str = "1D") -> pd.DataFrame:
-    """
-    ⚠️  CAUTION: Executes fresh Dune queries - CONSUMES API CREDITS!
-    Only use when you need the most recent onchain analytics data.
-    """
-    print("🚨 WARNING: This function consumes Dune API credits!")
-    collector = CryptoDataCollector(timezone=timezone, top_n=top_n, 
-                                  lookback_days=lookback_days, frequency=frequency,
-                                  use_cached_dune_only=False)
-    data = collector.collect_all_data()
-    return collector.combine_data_sources(data)
 
 
 if __name__ == "__main__":
     # Test the collector
     collector = CryptoDataCollector(top_n=5, lookback_days=30, frequency="1D")
-    print(f"Testing collector with frequency: {collector.FREQUENCY}")
+    print(f"Testing collector with frequency: {collector.frequency}")
     data = collector.collect_all_data()
     unified = collector.combine_data_sources(data)
     print(f"Final dataset shape: {unified.shape}")

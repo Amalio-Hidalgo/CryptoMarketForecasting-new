@@ -22,7 +22,7 @@ License:
     See LICENSE file for full terms and conditions.
 
 Author:
-    Amalio Hidalgo - HEC Paris MiF Program
+    Amalio Hidalgo - HEC Paris Grande Ecole MiM Program (Major in Strategic Management)
     Portfolio demonstration of quantitative finance and machine learning skills
 """
 
@@ -32,15 +32,16 @@ __license__ = "CC BY-NC-ND 4.0"
 __status__ = "Educational Demo"
 
 # Import main classes for easy access
-from .config import Config, load_config_from_file
+from .config import Config, load_config, load_config_from_file
 from .data.collectors import CryptoDataCollector
 from .features.engineering import CryptoFeatureEngineer
-from .models.pipeline import CryptoVolatilityMLPipeline
+from .models.pipeline import TimeSeriesMLPipeline
 
 __all__ = [
     "Config",
+    "load_config",
     "load_config_from_file", 
     "CryptoDataCollector",
     "CryptoFeatureEngineer",
-    "CryptoVolatilityMLPipeline",
+    "TimeSeriesMLPipeline",
 ]
