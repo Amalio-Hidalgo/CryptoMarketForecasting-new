@@ -125,7 +125,7 @@ class CryptoDataCollector:
             - Follows proper Python naming conventions (lowercase instance variables)
         """
         # Import and setup centralized configuration
-        from config import load_config, APIConfig
+        from ..config import load_config, APIConfig
         
         # Use provided config or create default
         if config is None:

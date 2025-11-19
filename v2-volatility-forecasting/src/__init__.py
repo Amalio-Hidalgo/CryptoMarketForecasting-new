@@ -35,13 +35,14 @@ __status__ = "Educational Demo"
 from .config import Config, load_config, load_config_from_file
 from .data.collectors import CryptoDataCollector
 from .features.engineering import CryptoFeatureEngineer
-from .models.pipeline import TimeSeriesMLPipeline
+from .models.pipeline import CryptoVolatilityMLPipeline, CryptoVolatilityMLPipeline as TimeSeriesMLPipeline
 
 __all__ = [
     "Config",
     "load_config",
-    "load_config_from_file", 
+    "load_config_from_file",
     "CryptoDataCollector",
     "CryptoFeatureEngineer",
+    "CryptoVolatilityMLPipeline",
     "TimeSeriesMLPipeline",
 ]
