@@ -424,6 +424,105 @@ class TimeSeriesMLPipeline:
         self.best_model.load_model(filepath)
         logger.info(f"Model loaded from {filepath}")
 
+    def run_complete_pipeline(
+        self,
+        final_features: pd.DataFrame,
+        client: Any,
+        target_coin: str = None,
+        optimize: bool = True,
+        target_col: str = 'target',
+        test_ratio: float = 0.2
+    ) -> Dict[str, Any]:
+        """
+        Run complete end-to-end ML pipeline.
+
+        This method orchestrates the entire workflow from data preparation through
+        training and evaluation. It's the main entry point for CLI usage.
+
+        Args:
+            final_features: DataFrame with all features and target column
+            client: Dask distributed client
+            target_coin: Name of target cryptocurrency (for logging only)
+            optimize: Whether to run hyperparameter optimization
+            target_col: Name of target column in final_features
+            test_ratio: Proportion of data for testing
+
+        Returns:
+            Dictionary with complete results including:
+                - study: Optuna study object (if optimize=True)
+                - model: Trained XGBoost model
+                - metrics: Evaluation metrics dict
+                - predictions: Test set predictions
+                - feature_names: List of feature names used
+        """
+        logger.info(f"Running complete pipeline for {target_coin or 'target'}...")
+
+        # Step 1: Prepare Dask matrices
+        logger.info("Step 1: Preparing train/test split...")
+        dtrain, dtest, X_test_dask, y_test_dask = self.prepare_dask_matrices(
+            final_features=final_features,
+            client=client,
+            test_ratio=test_ratio,
+            target_col=target_col
+        )
+
+        # Step 2: Optimize hyperparameters (optional)
+        study = None
+        if optimize:
+            logger.info("Step 2: Optimizing hyperparameters...")
+            study = self.optimize_hyperparameters(client, dtrain)
+            best_params = self.best_params
+        else:
+            logger.info("Step 2: Skipping optimization, using default parameters")
+            best_params = {}
+
+        # Step 3: Train final model
+        logger.info("Step 3: Training final model...")
+        training_results = self.train_final_model(
+            client=client,
+            dtrain=dtrain,
+            dtest=dtest,
+            params=best_params
+        )
+
+        model = training_results['model']
+
+        # Step 4: Make predictions
+        logger.info("Step 4: Generating predictions...")
+        y_pred = self.predict(client, X_test_dask, model)
+
+        # Convert y_test to pandas for metrics
+        if hasattr(y_test_dask, 'compute'):
+            y_test_values = y_test_dask.compute()
+        else:
+            y_test_values = y_test_dask
+
+        y_test_series = pd.Series(y_test_values, name='actual')
+
+        # Step 5: Compute metrics
+        logger.info("Step 5: Computing evaluation metrics...")
+
+        # Create naive baseline
+        y_naive = y_test_series.shift(1).fillna(method='bfill')
+
+        metrics = self.compute_metrics(y_test_series, y_pred, y_naive)
+
+        # Add additional metric names for backward compatibility
+        metrics['r2_score'] = metrics['r2']
+        metrics['mae_score'] = metrics['mae']
+
+        logger.info(f"✅ Pipeline complete! Test R²: {metrics['r2']:.4f}, MAE: {metrics['mae']:.6f}")
+
+        return {
+            'study': study,
+            'model': model,
+            'metrics': metrics,
+            'predictions': y_pred,
+            'y_test': y_test_series,
+            'feature_names': self.feature_names,
+            'training_history': training_results.get('history', {})
+        }
+
 
 # Legacy alias for backward compatibility
 CryptoVolatilityMLPipeline = TimeSeriesMLPipeline
