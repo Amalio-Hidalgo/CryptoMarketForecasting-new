@@ -53,15 +53,21 @@ class CryptoFeatureEngineer:
         self.time_window = time_window
         self.random_seed = random_seed
         
-        # Set TSFresh parameters
+        # Set TSFresh parameters with problematic features disabled
         if extraction_settings == "minimal":
-            self.extraction_settings = MinimalFCParameters()
+            fc_params = MinimalFCParameters()
         elif extraction_settings == "efficient":
-            self.extraction_settings = EfficientFCParameters()
+            fc_params = EfficientFCParameters()
         elif extraction_settings == "comprehensive":
-            self.extraction_settings = ComprehensiveFCParameters()
+            fc_params = ComprehensiveFCParameters()
         else:
-            self.extraction_settings = EfficientFCParameters()
+            fc_params = EfficientFCParameters()
+
+        # Disable binned_entropy - causes "Too many bins" error on low-variance data
+        if 'binned_entropy' in fc_params:
+            del fc_params['binned_entropy']
+
+        self.extraction_settings = fc_params
 
     def compute_ta_indicators(self, 
                              df: pd.DataFrame, 
@@ -352,10 +358,35 @@ class CryptoFeatureEngineer:
             Processed features DataFrame
         """
         print("Starting TSFresh + Dask pipeline...")
-        
+
         try:
+            # Clean data before TSFresh
+            print("🧹 Cleaning data before TSFresh...")
+            original_shape = X.shape
+
+            # Remove columns with too many NaNs (keep if >90% non-NaN)
+            threshold = int(0.9 * len(X))
+            X_clean = X.dropna(axis=1, thresh=threshold)
+
+            # Forward fill remaining NaNs (limit to 3)
+            X_clean = X_clean.ffill(limit=3).bfill(limit=3)
+
+            # Drop any remaining rows with NaNs
+            X_clean = X_clean.dropna()
+
+            print(f"   • Shape: {original_shape} → {X_clean.shape} (90% threshold)")
+
+            if X_clean.empty:
+                print("⚠️  All data was filtered out during cleaning")
+                return pd.DataFrame()
+
+            # Align y with cleaned X
+            common_idx = X_clean.index.intersection(y.index)
+            X_clean = X_clean.loc[common_idx]
+            y_aligned = y.loc[common_idx]
+
             # Create Dask feature container
-            FC_dask = self.create_dask_feature_container(X, n_partitions)
+            FC_dask = self.create_dask_feature_container(X_clean, n_partitions)
             
             # Test rolling on one partition for metadata
             print("🧪 Testing rolling operation...")
@@ -390,8 +421,8 @@ class CryptoFeatureEngineer:
             # Feature selection - persist
             print("🎯 Selecting significant features...")
             selected_dask = features_dask.map_partitions(
-                self.select_dask_partition, 
-                y=y, 
+                self.select_dask_partition,
+                y=y_aligned,
                 enforce_metadata=False
             ).persist()
             
@@ -399,18 +430,21 @@ class CryptoFeatureEngineer:
             print("🔗 Materializing results...")
             out = None
             selected_futures = client.compute(selected_dask.to_delayed())
-            
+
             for i, future in enumerate(selected_futures):
                 try:
                     df = future.result()
-                    if len(df) > 0:
+                    if df is not None and len(df) > 0 and df.shape[1] > 0:
                         print(f"   ✅ Partition {i}: {df.shape[1]} features")
                         if out is None:
-                            out = df
+                            out = df.copy()
                         else:
-                            out = out.join(df, how='outer')
+                            # Join with outer to preserve all indices
+                            out = out.join(df, how='outer', rsuffix='_dup')
+                            # Remove duplicate columns
+                            out = out[[c for c in out.columns if not c.endswith('_dup')]]
                 except Exception as e:
-                    print(f"   ⚠️  Partition {i} failed: {e}")
+                    print(f"   ⚠️  Partition {i} failed: {str(e)[:100]}")
                     continue
             
             if out is not None and len(out) > 0:
